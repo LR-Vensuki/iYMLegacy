@@ -67,7 +67,7 @@ void init_album(album_t *c, cJSON *json){
 	init_int(c, id, json);
 	
 	char id_str[128];
-	sprintf(id_str, "%ld", c->id);
+	sprintf(id_str, "%d", c->id);
 	c->realId = strdup(id_str);
 
 	init_string(c, error, json);
@@ -90,6 +90,10 @@ void init_album(album_t *c, cJSON *json){
 }
 
 void free_album(album_t *c){
+	free(c->realId);
+	c->realId = NULL;
+	free(c->type);
+	c->type = NULL;
 	free_string(c, error);
 	free_string(c, title);
 	free_string(c, coverUri);
@@ -114,6 +118,7 @@ void init_normalization(struct normalization *c, cJSON *json){
 }
 	
 void free_normalization(struct normalization *c){
+	(void)c;
 }
 
 void init_track(struct track *c, cJSON *json){

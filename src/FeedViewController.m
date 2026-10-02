@@ -12,12 +12,13 @@
 #include "UIKit/UIKit.h"
 #include "Foundation/Foundation.h"
 #import "YandexConnect.h"
-#import "YandexConnect.h"
 #import "ActionSheet.h"
 #import "../cYandexMusic/cYandexMusic.h"
 
 @implementation FeedViewController
 - (void)viewDidLoad {
+	[super viewDidLoad];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	[self setTitle:@"Подборка"];	
 	self.appDelegate = [[UIApplication sharedApplication]delegate];
 	
@@ -83,7 +84,7 @@
 	if (self.searchBar.text && self.searchBar.text.length > 0)
 		self.data = [self.loadedData filteredArrayUsingPredicate:
 				//[NSPredicate predicateWithFormat:@"self.title contains[c] %@", self.searchBar.text]];
-				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %s", self.searchBar.text, self.searchBar.text]];
+				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %@", self.searchBar.text, self.searchBar.text]];
 	else
 		self.data = self.loadedData;
 	[self.tableView reloadData];
@@ -94,6 +95,7 @@
 		[[NSUserDefaults standardUserDefaults]valueForKey:@"token"];
 	if (!token)
 		return;
+	self.token = token;
 	// animate spinner
 	CGRect rect = self.view.bounds;
 	self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
@@ -121,11 +123,18 @@ static int get_feed(void *data, playlist_t *playlist,  track_t *track, const cha
 	FeedViewController *self = (__bridge FeedViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
+		NSString *message = [NSString stringWithUTF8String:error];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self.spinner stopAnimating];
+			[self.refreshControl endRefreshing];
+			[self.appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music: %@", message]];
+		});
+		return 0;
 	}
 
 	if (track){
 		Item *t = [[Item alloc]initWithTrack:track token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			[self.loadedData addObject:t];
 			[self filterData];
@@ -135,7 +144,7 @@ static int get_feed(void *data, playlist_t *playlist,  track_t *track, const cha
 	}
 	if (playlist){
 		Item *t = [[Item alloc]initWithPlaylist:playlist token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			[self.loadedData addObject:t];
 			[self filterData];
@@ -191,6 +200,7 @@ static int get_feed(void *data, playlist_t *playlist,  track_t *track, const cha
 	{
 		UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 		UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
+		if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
 		[spinner startAnimating];
 		ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:NO onDone:^{
 			[spinner stopAnimating];
@@ -218,6 +228,7 @@ static int get_feed(void *data, playlist_t *playlist,  track_t *track, const cha
 	self.selected = [self.data objectAtIndex:indexPath.item];
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
+    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
 	[spinner startAnimating];
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
@@ -239,5 +250,14 @@ static int get_feed(void *data, playlist_t *playlist,  track_t *track, const cha
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
 	[searchBar resignFirstResponder];
 }
+- (void)yandexTokenDidUpdate:(NSNotification *)notification {
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	[self reloadData];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 @end
 // vim:ft=objc

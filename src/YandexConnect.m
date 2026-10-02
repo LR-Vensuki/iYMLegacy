@@ -1,171 +1,329 @@
 /**
- * File              : YandexConnect.m
- * Author            : Igor V. Sementsov <ig.kuzm@gmail.com>
- * Date              : 09.08.2023
- * Last Modified Date: 23.08.2023
- * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
+ * Patched Yandex OAuth connector for iYMLegacy.
  */
 
 #import "YandexConnect.h"
 #include "AppDelegate.h"
-#include "CoreGraphics/CoreGraphics.h"
-#include <time.h>
 #include "UIKit/UIKit.h"
-#include <stdio.h>
 #include "Foundation/Foundation.h"
+#include <stdio.h>
+#include <time.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include "../cYandexMusic/cYandexOAuth.h"
+#include "../cYandexMusic/cYandexMusic.h"
 
-#define CLIENTID "23cabbbdc6cd418abb4b39c32c41195d"
-#define CLIENTSECRET "53bc75238f0c4d08a118e51fe9203300"
+#include "iYMLegacyConfig.h"
+#define CLIENTID IYMLEGACY_YANDEX_CLIENT_ID
+#define CLIENTSECRET IYMLEGACY_YANDEX_CLIENT_SECRET
+
+NSString * const YandexTokenDidUpdateNotification = @"YandexTokenDidUpdateNotification";
+
+static NSString *device_identifier(void)
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *deviceID = [defaults stringForKey:@"yandex_device_id"];
+    if (deviceID && [deviceID length])
+        return deviceID;
+
+    CFUUIDRef uuid = CFUUIDCreate(kCFAllocatorDefault);
+    if (!uuid)
+        return @"iYMLegacy";
+    CFStringRef string = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+    NSString *result = (__bridge_transfer NSString *)string;
+    CFRelease(uuid);
+    if (!result)
+        result = @"iYMLegacy";
+    [defaults setObject:result forKey:@"yandex_device_id"];
+    [defaults synchronize];
+    return result;
+}
+
+static void save_oauth_tokens(const char *access_token,
+                              int expires_in,
+                              const char *refresh_token)
+{
+    if (!access_token || !*access_token)
+        return;
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setValue:[NSString stringWithUTF8String:access_token]
+                 forKey:@"token"];
+
+    if (refresh_token && *refresh_token) {
+        [defaults setValue:[NSString stringWithUTF8String:refresh_token]
+                     forKey:@"refresh_token"];
+    }
+
+    if (expires_in > 0) {
+        NSTimeInterval expires_at = [[NSDate date] timeIntervalSince1970] + expires_in;
+        [defaults setDouble:expires_at forKey:@"token_expires_at"];
+    }
+
+    [defaults synchronize];
+}
+
+static void notify_token_updated(void)
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:YandexTokenDidUpdateNotification object:nil];
+    });
+}
+
+static void clear_saved_tokens(void)
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults removeObjectForKey:@"token"];
+    [defaults removeObjectForKey:@"refresh_token"];
+    [defaults removeObjectForKey:@"token_expires_at"];
+    [defaults removeObjectForKey:@"uid"];
+    [defaults synchronize];
+}
 
 @implementation YandexConnect
 
 - (id)initWithFrame:(CGRect)frame {
-	if (self = [super init]) {
-		self.frame = frame;
-		//self.view = [[UIView alloc]initWithFrame:frame];
-		[self.view setFrame:frame];
-	}
-	return self;
+    if ((self = [super init])) {
+        self.frame = frame;
+    }
+    return self;
 }
 
 - (void)viewDidLoad {
-		// load webview
-		self.webView = [[UIWebView alloc]initWithFrame:self.frame];
-		[self.view addSubview:self.webView];
-		[self.webView setDelegate:self];
-		
-		//spinner
-		self.spinner = 
-		[[UIActivityIndicatorView alloc] 
-		initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-		[self.view addSubview:self.spinner];
-		self.spinner.tag = 12;
+    [super viewDidLoad];
 
-		// animate spinner
-		CGRect rect = self.view.bounds;
-		self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
-		[self.spinner startAnimating];
+    self.view.backgroundColor = [UIColor whiteColor];
 
-		//char *urlstr = c_yandex_oauth_code_on_page(CLIENTID);
-		//if (urlstr){
-			//NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:urlstr]];
-			//NSURLRequest *requestObj = [NSURLRequest requestWithURL:url];
-			//[self.webView loadRequest:requestObj];
-		//}
+    self.spinner = [[UIActivityIndicatorView alloc]
+        initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+    self.spinner.center = CGPointMake(self.view.bounds.size.width / 2.0,
+                                      self.view.bounds.size.height / 2.0);
+    [self.view addSubview:self.spinner];
+    [self.spinner startAnimating];
 
-		c_yandex_oauth_code_from_user(
-				CLIENTID, 
-			  UIDevice.currentDevice.name.UTF8String, 
-				(__bridge void*)self, 
-				code_callback);
+    /* The legacy UIWebView is intentionally not used for device flow. */
+    [self beginDeviceAuthorization];
+}
+
+- (void)beginDeviceAuthorization {
+    NSOperationQueue *queue = [[NSOperationQueue alloc] init];
+    queue.maxConcurrentOperationCount = 1;
+    [queue addOperationWithBlock:^{
+        NSString *deviceID = device_identifier();
+        c_yandex_oauth_code_from_user(
+            CLIENTID,
+            [deviceID UTF8String],
+            [[UIDevice currentDevice].name UTF8String],
+            (__bridge void *)self,
+            code_callback);
+    }];
+}
+
+static void refresh_saved_token_callback(
+    void *user_data,
+    const char *access_token,
+    int expires_in,
+    const char *new_refresh_token,
+    const char *error)
+{
+    (void)user_data;
+    if (error || !access_token) {
+        if (error)
+            NSLog(@"Yandex OAuth refresh failed: %s", error);
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults removeObjectForKey:@"token"];
+        [defaults removeObjectForKey:@"refresh_token"];
+        [defaults removeObjectForKey:@"token_expires_at"];
+        [defaults synchronize];
+        notify_token_updated();
+        return;
+    }
+    save_oauth_tokens(access_token, expires_in, new_refresh_token);
+    notify_token_updated();
 }
 
 
-static int token_callback(
-			void * user_data,
-			const char * access_token,
-			int expires_in,
-			const char * refresh_token,
-			const char * error
-			)
+static void music_auth_validation_callback(
+    void *user_data,
+    long uid,
+    const char *error)
 {
-	YandexConnect *self = (__bridge YandexConnect *)user_data;
-	AppDelegate *appDelegate = 
-		UIApplication.sharedApplication.delegate;
-	
-	if (error){
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			[appDelegate showMessage:
-				[NSString stringWithUTF8String:error]];
-		});
-		return 0;
-	}
-	
-	dispatch_sync(dispatch_get_main_queue(), ^{
-		[[NSUserDefaults standardUserDefaults]
-					setValue:[NSString stringWithUTF8String:access_token] 
-							forKey:@"token"];
-		[appDelegate showMessage:@"connected!"];
-		[self dismissViewControllerAnimated:true completion:nil];
-	});
+    YandexConnect *self = (__bridge YandexConnect *)user_data;
 
-	return 0;
+    if (error || uid <= 0) {
+        NSString *message = error
+            ? [NSString stringWithUTF8String:error]
+            : @"Yandex Music returned no account UID";
+        clear_saved_tokens();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.spinner stopAnimating];
+            if (self.authorizationAlert) { [self.authorizationAlert dismissWithClickedButtonIndex:-1 animated:NO]; }
+            self.authorizationAlert = nil;
+            AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
+            [appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music API: %@", message]];
+        });
+        return;
+    }
+
+    [[NSUserDefaults standardUserDefaults] setInteger:uid forKey:@"uid"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    notify_token_updated();
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.authorizationAlert) {
+            [self.authorizationAlert dismissWithClickedButtonIndex:-1 animated:NO];
+            self.authorizationAlert = nil;
+        }
+        [self.spinner stopAnimating];
+        AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
+        [appDelegate showMessage:@"connected!"];
+        [self dismissViewControllerAnimated:YES completion:nil];
+    });
+}
+
+static int token_callback(
+    void *user_data,
+    const char *access_token,
+    int expires_in,
+    const char *refresh_token,
+    const char *error)
+{
+    YandexConnect *self = (__bridge YandexConnect *)user_data;
+    if (error) {
+        NSString *message = [NSString stringWithUTF8String:error];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
+            [appDelegate showMessage:
+                [NSString stringWithFormat:@"Yandex OAuth token exchange failed: %@", message]];
+            [self.spinner stopAnimating];
+        });
+        return 0;
+    }
+
+    if (access_token) {
+        save_oauth_tokens(access_token, expires_in, refresh_token);
+
+        NSOperationQueue *queue = [[NSOperationQueue alloc] init];
+        queue.maxConcurrentOperationCount = 1;
+        NSString *tokenCopy = [[NSString alloc] initWithUTF8String:access_token];
+        [queue addOperationWithBlock:^{
+            c_yandex_music_check_auth(
+                [tokenCopy UTF8String],
+                (__bridge void *)self,
+                music_auth_validation_callback);
+        }];
+    }
+    return 0;
 }
 
 static int code_callback(
-			void * user_data,
-			const char * device_code,
-			const char * user_code,
-			const char * verification_url,
-			int interval,
-			int expires_in,
-			const char * error
-			)
+    void *user_data,
+    const char *device_code,
+    const char *user_code,
+    const char *verification_url,
+    int interval,
+    int expires_in,
+    const char *error)
 {
-	YandexConnect *self = (__bridge YandexConnect *)user_data;
-	AppDelegate *appDelegate = 
-		UIApplication.sharedApplication.delegate;
+    YandexConnect *self = (__bridge YandexConnect *)user_data;
 
-	if (error){
-		[appDelegate showMessage:
-			[NSString stringWithUTF8String:error]];
-		return 0;
-	}
+    if (error) {
+        NSString *message = [NSString stringWithUTF8String:error];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
+            [appDelegate showMessage:message];
+            [self.spinner stopAnimating];
+        });
+        return 0;
+    }
 
-	[appDelegate showMessage:
-		[NSString stringWithFormat:
-			@"open %s \nand enter code: %s",
-				verification_url, user_code]];
-	
-	[[[NSOperationQueue alloc]init] addOperationWithBlock:^{
-		c_yandex_oauth_get_token_from_user(
-				device_code, 
-				CLIENTID, 
-				CLIENTSECRET, 
-				interval, 
-				expires_in, 
-				(__bridge void*)self, 
-				token_callback);
-	}];
+    if (!device_code || !user_code || !verification_url)
+        return 0;
 
-	return 0;
+    /* Copy every value before C JSON storage is released. */
+    NSString *deviceCode = [NSString stringWithUTF8String:device_code];
+    NSString *userCode = [NSString stringWithUTF8String:user_code];
+    NSString *verificationURL = [NSString stringWithUTF8String:verification_url];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.authorizationAlert) {
+            [self.authorizationAlert dismissWithClickedButtonIndex:-1 animated:NO];
+            self.authorizationAlert = nil;
+        }
+
+        [UIPasteboard generalPasteboard].string = userCode;
+
+        NSString *message = [NSString stringWithFormat:
+            @"Откройте %@\nвведите код: %@\n\nКод скопирован в буфер обмена.",
+            verificationURL, userCode];
+
+        self.authorizationAlert = [[UIAlertView alloc]
+            initWithTitle:@"Яндекс"
+            message:message
+            delegate:nil
+            cancelButtonTitle:@"Закрыть"
+            otherButtonTitles:nil];
+
+        [self.authorizationAlert show];
+
+        /* Do not open Safari automatically. On iOS 6 this would always
+         * launch the device's legacy Safari. The user can open the URL
+         * manually on a current browser/device. */
+    });
+
+    NSOperationQueue *queue = [[NSOperationQueue alloc] init];
+    queue.maxConcurrentOperationCount = 1;
+    [queue addOperationWithBlock:^{
+        c_yandex_oauth_get_token_from_user(
+            [deviceCode UTF8String],
+            CLIENTID,
+            CLIENTSECRET,
+            interval,
+            expires_in,
+            (__bridge void *)self,
+            token_callback);
+    }];
+
+    return 0;
 }
 
-- (void)webViewDidStartLoad:(UIWebView *)webView {
-		// animate spinner
-		CGRect rect = self.view.bounds;
-		self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
-		[self.spinner startAnimating];
++ (void)refreshSavedTokenIfNeeded
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *refresh = [defaults stringForKey:@"refresh_token"];
+    if (!refresh || ![refresh length])
+        return;
+
+    NSTimeInterval expiresAt = [defaults doubleForKey:@"token_expires_at"];
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (expiresAt > now + 60.0)
+        return;
+
+    NSString *refreshCopy = [refresh copy];
+    NSOperationQueue *queue = [[NSOperationQueue alloc] init];
+    queue.maxConcurrentOperationCount = 1;
+    [queue addOperationWithBlock:^{
+        c_yandex_oauth_refresh_token(
+            [refreshCopy UTF8String],
+            CLIENTID,
+            CLIENTSECRET,
+            NULL,
+            refresh_saved_token_callback);
+    }];
 }
 
-- (void)webViewDidFinishLoad:(UIWebView *)webView {
-	[self.spinner stopAnimating];
-	// check code
-	//NSString *html = 
-		//[webView stringByEvaluatingJavaScriptFromString:(@"document.body.innerHTML")];
-	//if (html){
-		//char *token = 
-				//c_yandex_oauth_token_from_html([html UTF8String]);
-		//if (token){
-			//[[NSUserDefaults standardUserDefaults]
-					//setValue:[NSString stringWithUTF8String:token] 
-						//forKey:@"token"];
-			//[self dismissViewControllerAnimated:true completion:nil];
-		//}
-	//}
-}
+- (void)webViewDidStartLoad:(UIWebView *)webView { }
+- (void)webViewDidFinishLoad:(UIWebView *)webView { }
 
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
-	[self.spinner stopAnimating];
-	// ... Code to show reload button
-	UIAlertView *alert = 
-			[[UIAlertView alloc]initWithTitle:@"error" 
-			message:@"Can't connect to Yandex OAuth Server" 
-			delegate:self 
-			cancelButtonTitle:@"Закрыть" 
-			otherButtonTitles:nil];
-	[alert show];
+    [self.spinner stopAnimating];
+    UIAlertView *alert = [[UIAlertView alloc]
+        initWithTitle:@"error"
+        message:error.localizedDescription
+        delegate:self
+        cancelButtonTitle:@"Закрыть"
+        otherButtonTitles:nil];
+    [alert show];
 }
 
 @end

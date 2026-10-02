@@ -17,9 +17,9 @@
 
 #define new_from_json(T, j)\
 	({\
-	 struct T *ptr = (struct T *)malloc(sizeof(struct T));\
+	 struct T *ptr = (struct T *)calloc(1, sizeof(struct T));\
 	 if (!ptr){\
-		perror("malloc");\
+		perror("calloc");\
 		return NULL;\
 	 }\
 	 init_##T(ptr, j);\
@@ -37,7 +37,7 @@
 #define init_string(p, s, j) \
 	({\
 	  p->s = NULL;\
-		cJSON *o = cJSON_GetObjectItem(json, #s);\
+		cJSON *o = cJSON_GetObjectItem(j, #s);\
 		if (o){\
 			char *str = o->valuestring;\
 			if (str)\
@@ -55,23 +55,23 @@
 
 #define init_string_array(p, s, j) \
 	({\
+		p->s = NULL;\
+		p->n_##s = 0;\
 		cJSON *a = cJSON_GetObjectItem(j, #s);\
 		if (a && cJSON_IsArray(a)){\
 			int i;\
 			int count = cJSON_GetArraySize(a);\
-			p->s = malloc(count * sizeof(char *));\
-			if (!c->s){\
-				perror("malloc");\
-				return;\
+			if (count > 0){\
+				p->s = calloc((size_t)count, sizeof(char *));\
+				if (!p->s){\
+					perror("calloc");\
+					return;\
+				}\
 			}\
 			for (i = 0; i < count; ++i) {\
-				p->s[i] = NULL;\
 				cJSON *item = cJSON_GetArrayItem(a, i);\
-				if (item){\
-					char *str = item->valuestring;\
-					if (str)\
-						p->s[i] = strdup(str);\
-				}\
+				if (item && cJSON_IsString(item) && item->valuestring)\
+					p->s[i] = strdup(item->valuestring);\
 			}\
 			p->n_##s = count;\
 		}\
@@ -81,19 +81,20 @@
 	({\
 		if (p->s){\
 			int i;\
-			for (i = 0; i < c->n_##s; ++i) {\
-				if(p->s[i])\
+			for (i = 0; i < p->n_##s; ++i) {\
+				if (p->s[i])\
 					free(p->s[i]);\
 				p->s[i] = NULL;\
 			}\
 			free(p->s);\
+			p->s = NULL;\
 		}\
+		p->n_##s = 0;\
 	})
-
 
 #define init_struct(p, s, j, T) \
 	({\
-		cJSON *o = cJSON_GetObjectItem(json, #s);\
+		cJSON *o = cJSON_GetObjectItem(j, #s);\
 		if (o)\
 			init_##T(&(p->s), o);\
 	})
@@ -106,22 +107,25 @@
 
 #define init_struct_array(p, s, j, T) \
 	({\
-		cJSON *a = cJSON_GetObjectItem(json, #s);\
+		p->s = NULL;\
+		p->n_##s = 0;\
+		cJSON *a = cJSON_GetObjectItem(j, #s);\
 		if (a && cJSON_IsArray(a)){\
 			int i;\
 			int count = cJSON_GetArraySize(a);\
-			p->s = malloc(count * sizeof(struct T));\
-			if (!p->s){\
-				perror("malloc");\
-				return;\
+			if (count > 0){\
+				p->s = calloc((size_t)count, sizeof(struct T));\
+				if (!p->s){\
+					perror("calloc");\
+					return;\
+				}\
+				for (i = 0; i < count; ++i) {\
+					cJSON *item = cJSON_GetArrayItem(a, i);\
+					if (item)\
+						init_##T(&(p->s[i]), item);\
+				}\
+				p->n_##s = count;\
 			}\
-			for (i = 0; i < count; ++i) {\
-				memset(&(p->s[i]), 0, sizeof(struct T));\
-				cJSON *item = cJSON_GetArrayItem(a, i);\
-				if (item)\
-					init_##T(&(p->s[i]), item);\
-			}\
-			p->n_##s = count;\
 		}\
 	})
 
@@ -129,11 +133,13 @@
 	({\
 		if (p->s){\
 			int i;\
-			for (i = 0; i < p->n_##s; ++i) {\
+			for (i = 0; i < p->n_##s; ++i){\
 				free_##T(&(p->s[i]));\
 			}\
 			free(p->s);\
 		}\
+		p->s = NULL;\
+		p->n_##s = 0;\
 	})
 
 typedef struct cover {
@@ -297,41 +303,6 @@ typedef struct playlist playlist_t;
 playlist_t *c_yandex_music_playlist_new_from_json(cJSON *json);
 void c_yandex_music_playlist_free(playlist_t *p);
 
-
-#define STRUCT\
-	STRUCT_ITEM_STR(codec)\
-	STRUCT_ITEM_BOL(gain)\
-	STRUCT_ITEM_STR(preview)\
-	STRUCT_ITEM_STR(downloadInfoUrl)\
-	STRUCT_ITEM_BOL(direct)\
-	STRUCT_ITEM_INT(bitrateInKbps)
-
-struct downloadInfo {
-	#define STRUCT_ITEM_STR(m) char * m;
-	#define STRUCT_ITEM_BOL(m) bool m;
-	#define STRUCT_ITEM_INT(m) int m;
-	STRUCT
-	#undef STRUCT_ITEM_STR
-	#undef STRUCT_ITEM_BOL
-	#undef STRUCT_ITEM_INT
-};
-
-static void init_downloadInfo(struct downloadInfo *c, cJSON *json)
-{
-	#define STRUCT_ITEM_STR(m) init_string(c, m, json);
-	#define STRUCT_ITEM_BOL(m) init_int(c, m, json);
-	#define STRUCT_ITEM_INT(m) init_int(c, m, json);
-	STRUCT
-	#undef STRUCT_ITEM_STR
-	#undef STRUCT_ITEM_BOL
-	#undef STRUCT_ITEM_INT
-}
-
-static struct downloadInfo *
-c_yandex_music_downloadInfo_new_from_json(cJSON *json)
-{
-	return new_from_json(downloadInfo, json);
-}
 
 
 #endif /* ifndef STRUCTURES_H */		

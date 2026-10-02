@@ -361,7 +361,12 @@ short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
             else *s = '\0'; // null terminate tag name
             for (i = 0; root->attr[i] && strcmp(n, root->attr[i][0]); i++);
 
-            while (*(n = ++s + strspn(s, EZXML_WS)) && *n != '>') {
+            while (1) {
+                ++s;
+                s += strspn(s, EZXML_WS);
+                n = s;
+                if (!*n || *n == '>')
+                    break;
                 if (*(s = n + strcspn(n, EZXML_WS))) *s = '\0'; // attr name
                 else { ezxml_err(root, t, "malformed <!ATTLIST"); break; }
 
@@ -810,7 +815,7 @@ void ezxml_free(ezxml_t xml)
         }            
         if (root->pi[0]) free(root->pi); // free processing instructions
 
-        if (root->len == -1) free(root->m); // malloced xml data
+        if (root->len == (size_t)-1) free(root->m); // malloced xml data
 #ifndef EZXML_NOMMAP
         else if (root->len) munmap(root->m, root->len); // mem mapped xml data
 #endif // EZXML_NOMMAP

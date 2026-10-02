@@ -18,6 +18,8 @@
 @implementation PlaylistsViewController
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	self.title = @"Плейлисты";
 	self.appDelegate = [[UIApplication sharedApplication]delegate];
 	self.syncData = [[NSOperationQueue alloc]init];
@@ -82,41 +84,36 @@
 }
 
 -(void)reloadData{
-	// stop all sync
-	[self.syncData cancelAllOperations];
-	
-	NSString *token = 
-		[[NSUserDefaults standardUserDefaults]valueForKey:@"token"];
-	if (!token)
-		return;
+    [self.syncData cancelAllOperations];
 
-	// get uid
-	NSInteger uid = 
-		[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-	if (!uid){
-		if (token)
-			uid = c_yandex_music_get_uid([token UTF8String]);
-		if (uid)
-			[[NSUserDefaults standardUserDefaults]setInteger:uid forKey:@"uid"];
-	}
-	
-	// animate spinner
-	CGRect rect = self.view.bounds;
-	self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
-	if (!self.refreshControl.refreshing)
-		[self.spinner startAnimating];
+    NSString *token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+    if (!token) return;
+    self.token = token;
 
-	[self.loadedData removeAllObjects];
-	[self.tableView reloadData];
-	[self.syncData addOperationWithBlock:^{
-		c_yandex_music_get_user_playlists(
-				[token UTF8String], 
-				"100x100", uid, 
-				(__bridge void *)self, 
-				get_user_playlists);
-	}];	
+    CGRect rect = self.view.bounds;
+    self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
+    if (!self.refreshControl.refreshing) [self.spinner startAnimating];
+    [self.loadedData removeAllObjects];
+    [self.tableView reloadData];
+
+    [self.syncData addOperationWithBlock:^{
+        long uid = [[NSUserDefaults standardUserDefaults] integerForKey:@"uid"];
+        if (!uid) {
+            uid = c_yandex_music_get_uid([token UTF8String]);
+            if (uid) [[NSUserDefaults standardUserDefaults] setInteger:uid forKey:@"uid"];
+        }
+        if (!uid) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.spinner stopAnimating];
+                [self.refreshControl endRefreshing];
+            });
+            return;
+        }
+        c_yandex_music_get_user_playlists(
+            [token UTF8String], "100x100", uid,
+            (__bridge void *)self, get_user_playlists);
+    }];
 }
-
 -(void)refresh:(id)sender{
 	[self reloadData];
 }
@@ -126,11 +123,18 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 	PlaylistsViewController *self = (__bridge PlaylistsViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
+		NSString *message = [NSString stringWithUTF8String:error];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self.spinner stopAnimating];
+			[self.refreshControl endRefreshing];
+			[self.appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music: %@", message]];
+		});
+		return 0;
 	}
 
 	if (playlist){
 		Item *t = [[Item alloc]initWithPlaylist:playlist token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			[self.loadedData addObject:t];
 			[self filterData];
@@ -187,6 +191,7 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 					 self.selected = [self.data objectAtIndex:indexPath.item];
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
+    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
 	[spinner startAnimating];
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
@@ -233,14 +238,29 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 #pragma mark <ALERT DELEGATE FUNCTIONS>
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
 	if (buttonIndex == 1){
-		c_yandex_music_remove_playlist(
-				[self.token UTF8String], 
-				self.selected.uid, 
-				self.selected.kind, 
-				NULL, NULL);
-		[self.loadedData removeObject:self.selected];
-		[self filterData];
+		NSString *token = [self.token copy];
+		long uid = self.selected.uid;
+		long kind = self.selected.kind;
+		Item *selected = self.selected;
+		[self.syncData addOperationWithBlock:^{
+			int ret = c_yandex_music_remove_playlist([token UTF8String], uid, kind, NULL, NULL);
+			if (ret == 0) {
+				dispatch_async(dispatch_get_main_queue(), ^{
+					[self.loadedData removeObject:selected];
+					[self filterData];
+				});
+			}
+		}];
 	}
 }
+- (void)yandexTokenDidUpdate:(NSNotification *)notification {
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	[self reloadData];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 @end
 // vim:ft=objc

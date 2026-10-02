@@ -15,7 +15,7 @@ extern "C" {
 
 #include "structures.h"
 
-char * c_yandex_oauth_url();
+char * c_yandex_oauth_url(const char *client_id);
 char *c_yandex_oauth_token_from_html(
 		const char *html);
 
@@ -35,6 +35,13 @@ int c_yandex_music_run_method(
 
 /* return user id for token or 0 on error */
 long c_yandex_music_get_uid(const char *token);
+
+/* Validate an OAuth token against Yandex Music and return the account UID.
+ * The callback is invoked after account/status completes. */
+int c_yandex_music_check_auth(
+        const char *token,
+        void *user_data,
+        void (*callback)(void *user_data, long uid, const char *error));
 
 /* run yandex music api method and callbacks with recomended
  * tracks. Return 0 on success or -1 on error*/
@@ -205,7 +212,6 @@ int c_yandex_music_playlist_add_tracks(
 				(void *user_data,
 				 const char *error));
 
-#
 #ifdef __cplusplus
 }  /* end of the 'extern "C"' block */
 #endif

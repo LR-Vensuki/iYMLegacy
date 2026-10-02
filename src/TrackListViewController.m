@@ -27,6 +27,8 @@
 }
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	self.appDelegate = [[UIApplication sharedApplication]delegate];
 	// allocate array
 	self.data = [NSArray array];
@@ -83,7 +85,7 @@
 	if (self.searchBar.text && self.searchBar.text.length > 0)
 		self.data = [self.loadedData filteredArrayUsingPredicate:
 				//[NSPredicate predicateWithFormat:@"self.title contains[c] %@", self.searchBar.text]];
-				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %s", self.searchBar.text, self.searchBar.text]];
+				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %@", self.searchBar.text, self.searchBar.text]];
 	else
 		self.data = self.loadedData;
 	[self.tableView reloadData];
@@ -131,11 +133,18 @@ static int get_tracks(void *data, track_t *track, const char *error)
 	TrackListViewController *self = (__bridge TrackListViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
+		NSString *message = [NSString stringWithUTF8String:error];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self.spinner stopAnimating];
+			[self.refreshControl endRefreshing];
+			[self.appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music: %@", message]];
+		});
+		return 0;
 	}
 
 	if (track){
 		Item *t = [[Item alloc]initWithTrack:track token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			[self.loadedData addObject:t];
 			[self filterData];
@@ -208,6 +217,15 @@ static int get_tracks(void *data, track_t *track, const char *error)
 }
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
 	[searchBar resignFirstResponder];
+}
+
+- (void)yandexTokenDidUpdate:(NSNotification *)notification {
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	[self reloadData];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

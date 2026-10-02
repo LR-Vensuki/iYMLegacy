@@ -61,7 +61,7 @@
 }
 
 void post_error(void *data, const char *error){
-	AppDelegate *appDelegate = (__bridge AppDelegate *)data;
+	(void)data;
 	if (error){
 		NSLog(@"%s", error);
 		//dispatch_sync(dispatch_get_main_queue(), ^{
@@ -76,25 +76,31 @@ void post_error(void *data, const char *error){
 		return;
 
 	if (self.playbackState == MPMoviePlaybackStatePlaying){
-		NSInteger uid = 
-				[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-		if (!uid){
-			if (self.nowPlaying.token)
-				uid = c_yandex_music_get_uid([self.nowPlaying.token UTF8String]);
-			if (uid)
-				[[NSUserDefaults standardUserDefaults]setInteger:uid forKey:@"uid"];
-		}
-
-		if (!uid)
+		NSInteger uid = [[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
+		NSString *token = [self.nowPlaying.token copy];
+		NSString *itemId = [self.nowPlaying.itemId copy];
+		NSInteger duration = self.duration;
+		NSInteger played = self.playableDuration;
+		if (!uid) {
+			[[[NSOperationQueue alloc] init] addOperationWithBlock:^{
+				long fetchedUID = token ? c_yandex_music_get_uid([token UTF8String]) : 0;
+				if (fetchedUID) [[NSUserDefaults standardUserDefaults] setInteger:fetchedUID forKey:@"uid"];
+				if (!fetchedUID) {
+					dispatch_async(dispatch_get_main_queue(), ^{ NSLog(@"Could not determine Yandex UID"); });
+					return;
+				}
+			c_yandex_music_post_current([token UTF8String], NULL, [itemId UTF8String], duration, played, fetchedUID, (__bridge void *)self.appDelegate, post_error);
+			}];
 			return;
+		}
 
 		[[[NSOperationQueue alloc]init] addOperationWithBlock:^{
 			c_yandex_music_post_current(
-					[self.nowPlaying.token UTF8String], 
+					token ? [token UTF8String] : NULL, 
 					NULL,
-					[self.nowPlaying.itemId UTF8String], 
-					self.duration,
-					self.playableDuration,
+					[itemId UTF8String], 
+					duration,
+					played,
 					uid,
 					(__bridge void *)self.appDelegate, post_error);
 		}];
@@ -102,6 +108,7 @@ void post_error(void *data, const char *error){
 }
 
 -(void)playItem:(Item *)item{
+	if (!item || !item.downloadURL) return;
 	[self setContentURL:item.downloadURL];
 	[self prepareToPlay];
 	[self play];
@@ -145,6 +152,7 @@ void post_error(void *data, const char *error){
 }
 
 -(void)downloadCurrentAndNext:(id)sender{
+	if (self.current < 0 || self.current >= (NSInteger)self.playlist.count) return;
 	// download current
 	Item *item = [self.playlist objectAtIndex:self.current];
 	if (item){
@@ -170,6 +178,10 @@ void post_error(void *data, const char *error){
 }
 
 -(void)playCurrent:(void (^)())onDone{
+	if (self.current < 0 || self.current >= (NSInteger)self.playlist.count) {
+		if (onDone) onDone();
+		return;
+	}
 	if (self.playlist.count > self.current){
 		Item *item = [self.playlist objectAtIndex:self.current];
 		if (item)
@@ -178,16 +190,20 @@ void post_error(void *data, const char *error){
 }
 
 -(void)addToLast:(Item *)item {
-	[self.playlist addObject:item];
+	if (item) [self.playlist addObject:item];
 }
 
 -(void)addAfterCurrent:(Item *)item{
-	[self.playlist insertObject:item atIndex:self.current + 1];
+	if (!item) return;
+	NSUInteger index = (self.current < 0) ? self.playlist.count : (NSUInteger)(self.current + 1);
+	if (index > self.playlist.count) index = self.playlist.count;
+	[self.playlist insertObject:item atIndex:index];
 }
 
 -(void)addToTopAndPlay:(Item *)item onDone:(void (^)())onDone{
-	if (self.current < 0)
-		self.current = 0;
+	if (!item) { if (onDone) onDone(); return; }
+	if (self.current < 0) self.current = 0;
+	if (self.current > (NSInteger)self.playlist.count) self.current = self.playlist.count;
 	[self.playlist insertObject:item atIndex:self.current];
 	[self playCurrent:onDone];
 }
@@ -311,7 +327,12 @@ NSNumber* reason = [[notification userInfo] objectForKey:MPMoviePlayerPlaybackDi
 - (void)playbackStateChanged:(NSNotification*)notification {
 }
 
-@end
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.downloadPlaylist invalidate];
+    [self.timer invalidate];
+}
 
+@end
 
 // vim:ft=objc

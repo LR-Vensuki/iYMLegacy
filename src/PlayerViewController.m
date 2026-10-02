@@ -6,7 +6,6 @@
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
  */
 #import "PlayerViewController.h"
-#import "PlayerViewController.h"
 #include "Item.h"
 #include "UIKit/UIKit.h"
 #include "Foundation/Foundation.h"
@@ -16,6 +15,7 @@
 @implementation PlayerViewController
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
 	self.title = @"Плеер";
 	self.appDelegate = [[UIApplication sharedApplication]delegate];
 	self.loadedData = self.appDelegate.player.playlist;
@@ -158,11 +158,12 @@ void like_callback(void *data, const char *error){
 	PlayerViewController *self = (__bridge PlayerViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
-		//[self.appDelegate showMessage:@"error" title:[NSString stringWithUTF8String:error]];
-		//return;
+		return;
 	}
-	
-	self.liked = !self.liked;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		self.liked = !self.liked;
+		[self.like setImage:[UIImage imageNamed:(self.liked ? @"heart_fill" : @"heart")]];
+	});
 }
 
 -(void)shareIsPushed:(id)sender{
@@ -309,7 +310,6 @@ void like_callback(void *data, const char *error){
 
 #pragma mark <ACTION SHEET DELEGATE>
 - (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
-	AppDelegate *a = [[UIApplication sharedApplication]delegate];
 	switch (buttonIndex){
 		case 0: 
 			{
@@ -326,43 +326,40 @@ void like_callback(void *data, const char *error){
 			} 
 	}
 }
-static void on_error(void *data, const char *error){
-	PlayerViewController *self = (__bridge PlayerViewController *)data;
-	if (error){
-		NSLog(@"%s", error);
-		//[self.appDelegate showMessage:[NSString stringWithUTF8String:error]];	
-	}
-}
 
 -(void)textEditViewControllerSaveText:(NSString *)text{
-	// create new playlist
-	if (!self.token)
-		return;
-	NSInteger uid = 
-			[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-		if (!uid)
-			return;
-	
-	playlist_t *p = c_yandex_music_create_playlist(
-			[self.token UTF8String], uid, [text UTF8String], 
-			(__bridge void *)self, on_error);
+    if (!self.token || !text || ![text length]) return;
 
-	if (p){
-		// get all tracks
-		int count = self.appDelegate.player.playlist.count;
-		long track_ids[count];
-		long album_ids[count];
-		int i = 0;
-		for (Item *item in self.appDelegate.player.playlist){
-			track_ids[i] = [item.itemId intValue];	
-			album_ids[i] = item.albumId;	
-			i++;
-		}
-		c_yandex_music_playlist_add_tracks(
-				[self.token UTF8String], uid, p->kind, 
-				track_ids, album_ids, count, 
-				(__bridge void *)self, on_error);
-	}
+    NSString *token = [self.token copy];
+    NSString *title = [text copy];
+    NSInteger uid = [[NSUserDefaults standardUserDefaults] integerForKey:@"uid"];
+    if (!uid) return;
+
+    NSArray *playlistItems = [self.appDelegate.player.playlist copy];
+    [self.doLike addOperationWithBlock:^{
+        playlist_t *p = c_yandex_music_create_playlist(
+            [token UTF8String], uid, [title UTF8String], NULL, NULL);
+        if (!p) return;
+
+        int count = (int)[playlistItems count];
+        if (count > 0) {
+            long *track_ids = calloc((size_t)count, sizeof(long));
+            long *album_ids = calloc((size_t)count, sizeof(long));
+            if (track_ids && album_ids) {
+                for (int i = 0; i < count; ++i) {
+                    Item *item = [playlistItems objectAtIndex:i];
+                    track_ids[i] = (long)[item.itemId longLongValue];
+                    album_ids[i] = item.albumId;
+                }
+                c_yandex_music_playlist_add_tracks(
+                    [token UTF8String], uid, p->kind,
+                    track_ids, album_ids, count, NULL, NULL);
+            }
+            if (track_ids) free(track_ids);
+            if (album_ids) free(album_ids);
+        }
+        c_yandex_music_playlist_free(p);
+    }];
 }
 #pragma mark <ALERT DELEGATE FUNCTIONS>
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {

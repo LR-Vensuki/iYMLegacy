@@ -27,6 +27,7 @@
 }
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
 	
 	// play button
 	//UIBarButtonItem *playButtonItem = 

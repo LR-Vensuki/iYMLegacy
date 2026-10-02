@@ -13,7 +13,12 @@
 extern "C" {
 #endif
 
+/* Legacy iOS builds do not ship a usable CA bundle by default.
+ * Keep this configurable: define VERIFY_SSL=1 when your SDK/device
+ * environment has a current trusted CA bundle. */
+#ifndef VERIFY_SSL
 #define VERIFY_SSL 0L
+#endif
 
 /*
  * Получение OAuth-токенов
@@ -23,7 +28,7 @@ extern "C" {
  *
  * Чтобы использовать протокол OAuth:
  * 1. Зарегистрируйте свое OAuth-приложение.
- *		https://oauth.yandex.ru/client/new
+ *		https://oauth.yandex.ru/
  * 2. Подучите код подтверждения 
  *		выберите один из способов:
  *		2.1 Получение кода подтверждения из URL перенаправления:
@@ -58,7 +63,8 @@ char * c_yandex_oauth_code_from_html(const char *html);
 
 void c_yandex_oauth_code_from_user(
 		const char *client_id, 
-		const char *device_name,  //device name - any
+		const char *device_id,    // stable ID for this device
+		const char *device_name,  // device name - any
 		void * user_data,
 		int (*callback)(
 			void * user_data,
@@ -85,6 +91,20 @@ void c_yandex_oauth_get_token_from_user(
 			const char * refresh_token,
 			const char * error
 			)
+	);
+
+void c_yandex_oauth_refresh_token(
+		const char *refresh_token,
+		const char *client_id,
+		const char *client_secret,
+		void *user_data,
+		void (*callback)(
+			void *user_data,
+			const char *access_token,
+			int expires_in,
+			const char *refresh_token,
+			const char *error
+		)
 	);
 
 void c_yandex_oauth_get_token(

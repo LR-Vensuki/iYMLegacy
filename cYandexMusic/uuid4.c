@@ -114,8 +114,7 @@ void UUID4_PREFIX(seed)(uint64_t* state)
   static uint64_t state0 = 0;
 
   struct timespec time;
-  bool ok = clock_gettime(UUID4_CLOCK_ID, &time) == 0;
-  //UUID4_ASSERT(ok);
+  clock_gettime(UUID4_CLOCK_ID, &time);
 
   *state = state0++ + ((uintptr_t)&time ^ (uint64_t)(time.tv_sec * 1000000000 + time.tv_nsec));
 

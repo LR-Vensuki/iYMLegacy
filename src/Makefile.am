@@ -63,6 +63,7 @@ _nibs:
 	cp -fr ../lproj/* iYMLegacy.app/.
 
 iYMLegacy.app: iYMLegacy _dir _plist _images _nibs
+	rm -rf iYMLegacy.app/libs
 	cp -f iYMLegacy iYMLegacy.app/. 
 	cp -r ../libs iYMLegacy.app/.
 	cd iYMLegacy.app; \
@@ -74,14 +75,19 @@ iYMLegacy.app: iYMLegacy _dir _plist _images _nibs
 		$(INSTALL_NAME_TOOL) -change /usr/lib/libgcc_s.1.dylib @executable_path/libs/libgcc_s.1.dylib libcrypto.dylib;
 
 iYMLegacy.ipa: iYMLegacy.app
+	rm -rf Payload
 	mkdir Payload
 	cp -r iYMLegacy.app Payload/.
-	${ZIP} -r iYMLegacy.ipa Payload iTunesArtwork iTunesMetadata.plist
+	@if test -f iTunesArtwork && test -f iTunesMetadata.plist; then \
+		${ZIP} -r iYMLegacy.ipa Payload iTunesArtwork iTunesMetadata.plist; \
+	else \
+		${ZIP} -r iYMLegacy.ipa Payload; \
+	fi
 	rm -rf Payload
 
 clean-local:
-	rm -r iYMLegacy.app
-	rm -r iYMLegacy.ipa
+	rm -rf iYMLegacy.app
+	rm -f iYMLegacy.ipa
 
 install:
 #do nothing
