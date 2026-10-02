@@ -1,20 +1,26 @@
 /**
  * File              : YandexConnect.h
- * Author            : Igor V. Sementsov <ig.kuzm@gmail.com>
- * Date              : 09.08.2023
- * Last Modified Date: 23.08.2023
- * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
+ * Patched for iYMLegacy legacy iOS build.
  */
 
 #import <UIKit/UIKit.h>
 
+extern NSString * const YandexTokenDidUpdateNotification;
+
 @interface YandexConnect : UIViewController <UIWebViewDelegate>
 {
 }
+
 @property (strong) UIWebView *webView;
-@property CGRect frame;
 @property (strong) UIActivityIndicatorView *spinner;
+@property (strong) UIAlertView *authorizationAlert;
+@property CGRect frame;
+
 - (id)initWithFrame:(CGRect)frame;
+- (void)beginDeviceAuthorization;
+
++ (void)refreshSavedTokenIfNeeded;
 
 @end
+
 // vim:ft=objc

@@ -1,22 +1,14 @@
-#!/bin/bash
-# File              : autogen.sh
-# Author            : Igor V. Sementsov <ig.kuzm@gmail.com>
-# Date              : 07.07.2023
-# Last Modified Date: 09.08.2023
-# Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
 #!/bin/sh
+set -e
 
-echo aclocal...
 aclocal
-
-echo automake...
 automake --add-missing
-
-echo autoconf...
 autoconf
-
-echo config.cache, autom4te.cache...
 rm -f config.cache
 rm -rf autom4te.cache
 
-echo done
+# The original repository referenced an optional configure_ios.sh which is
+# not included. Run it only when a caller supplies an executable copy.
+if [ -x ./configure_ios.sh ]; then
+    ./configure_ios.sh
+fi

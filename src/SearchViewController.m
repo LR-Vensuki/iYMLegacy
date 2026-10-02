@@ -19,6 +19,8 @@
 @implementation SearchViewController
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:YandexTokenDidUpdateNotification object:nil];
 	[self setTitle:@"Поиск"];
 	
 	self.syncData = [[NSOperationQueue alloc]init];
@@ -65,11 +67,18 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	SearchViewController *self = (__bridge SearchViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
+		NSString *message = [NSString stringWithUTF8String:error];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self.spinner stopAnimating];
+			[self.refreshControl endRefreshing];
+			[self.appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music: %@", message]];
+		});
+		return 0;
 	}
 
 	if (track){
 		Item *t = [[Item alloc]initWithTrack:track token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 				if (!self.additional){
 					[self.best addObject:t];
@@ -87,7 +96,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	}
 	if (playlist){
 		Item *t = [[Item alloc]initWithPlaylist:playlist token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			[self.playlists addObject:t];
 			[self.tableView reloadData];
@@ -97,7 +106,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	} 
 	if (album){
 		Item *t = [[Item alloc]initWithAlbum:album token:self.token];
-		dispatch_sync(dispatch_get_main_queue(), ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
 			// Update your UI
 			if (t.itemType == ITEM_ALBUM)
 				[self.albums addObject:t];
@@ -246,6 +255,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 			if (token){
 				UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 				UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
+                if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
 				[spinner startAnimating];
 				ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:NO onDone:^{
 					[spinner stopAnimating];
@@ -292,6 +302,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	self.selected = [self.best objectAtIndex:indexPath.item];
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
+    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
 	[spinner startAnimating];
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
@@ -316,5 +327,15 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 - (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
 	[searchBar resignFirstResponder];
 }
+- (void)yandexTokenDidUpdate:(NSNotification *)notification {
+    self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+    if (self.searchBar.text.length > 0)
+        [self reloadData];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 @end
 // vim:ft=objc

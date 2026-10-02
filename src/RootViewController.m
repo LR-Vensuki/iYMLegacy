@@ -17,6 +17,7 @@
 
 @implementation RootViewController
 - (void)viewDidLoad {
+	[super viewDidLoad];
 	
 	// feed view
 	FeedViewController *feedvc = 

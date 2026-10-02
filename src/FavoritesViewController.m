@@ -12,7 +12,6 @@
 #include "UIKit/UIKit.h"
 #include "Foundation/Foundation.h"
 #import "YandexConnect.h"
-#import "YandexConnect.h"
 #import "../cYandexMusic/cYandexMusic.h"
 #import "PlayerViewController.h"
 #import "ActionSheet.h"
@@ -40,16 +39,6 @@
 		NSString *token = 
 			[[NSUserDefaults standardUserDefaults]valueForKey:@"token"];
 		self.token = token;
-		// get uid
-		NSInteger uid = 
-			[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-		if (!uid){
-			if (token)
-				uid = c_yandex_music_get_uid([token UTF8String]);
-			if (uid)
-				[[NSUserDefaults standardUserDefaults]setInteger:uid forKey:@"uid"];
-		}
-		
 		[self setViewIsLoaded:NO];
 		[self reloadData];
 	}
@@ -57,6 +46,8 @@
 }
 
 - (void)viewDidLoad {
+	[super viewDidLoad];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	[self setTitle:@"Избранное"];	
 	
 	// search bar
@@ -94,15 +85,22 @@ static int get_favorites(void *data, track_t *track, const char *error)
 	FavoritesViewController *self = (__bridge FavoritesViewController *)data;
 	if (error){
 		NSLog(@"%s", error);
+		NSString *message = [NSString stringWithUTF8String:error];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[self.spinner stopAnimating];
+			[self.refreshControl endRefreshing];
+			[self.appDelegate showMessage:[NSString stringWithFormat:@"Yandex Music: %@", message]];
+		});
+		return 0;
 	}
 
 	if (track){
 		Item *t = [[Item alloc]initWithTrack:track token:self.token];
-		[self.loadedData addObject:t];
 		if ((self.viewIsLoaded && !self.cacheLoaded) || self.needRefresh){
-			dispatch_sync(dispatch_get_main_queue(), ^{
+			dispatch_async(dispatch_get_main_queue(), ^{
 				// Update your UI
-					[self filterData];
+				[self.loadedData addObject:t];
+				[self filterData];
 					[self.spinner stopAnimating];
 					[self.refreshControl endRefreshing];
 			});
@@ -125,71 +123,41 @@ static int get_favorites(void *data, track_t *track, const char *error)
 	if (self.searchBar.text && self.searchBar.text.length > 0)
 		self.data = [self.loadedData filteredArrayUsingPredicate:
 				//[NSPredicate predicateWithFormat:@"self.title contains[c] %@", self.searchBar.text]];
-				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %s", self.searchBar.text, self.searchBar.text]];
+				[NSPredicate predicateWithFormat:@"self.title contains[c] %@ or self.subtitle contains[c] %@", self.searchBar.text, self.searchBar.text]];
 	else
 		self.data = self.loadedData;
 	[self.tableView reloadData];
 }
 
 -(void)reloadData{
-	// stop all sync
-	[self.syncData cancelAllOperations];
-	
-	NSString *token = 
-		[[NSUserDefaults standardUserDefaults]valueForKey:@"token"];
-	if (!token)
-		return;
+    [self.syncData cancelAllOperations];
+    NSString *token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+    if (!token) return;
+    self.token = token;
 
-	NSInteger uid = 
-		[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-	if (!uid)
-		return;
-		
-	// animate spinner
-	CGRect rect = self.view.bounds;
-	self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
-	if (!self.refreshControl.refreshing)
-		[self.spinner startAnimating];
+    CGRect rect = self.view.bounds;
+    self.spinner.center = CGPointMake(rect.size.width/2, rect.size.height/2);
+    if (!self.refreshControl.refreshing) [self.spinner startAnimating];
+    [self.loadedData removeAllObjects];
+    [self.tableView reloadData];
 
-	[self.loadedData removeAllObjects];
-	[self.tableView reloadData];
-	
-	//load data from cache
-	//if (!self.cacheLoaded){
-		//NSData *codedData = [NSData dataWithContentsOfFile:self.cache];
-		//if (codedData){
-			//NSKeyedUnarchiver *unarchiver = 
-					//[[NSKeyedUnarchiver alloc]initForReadingWithData:codedData];
-			//NSArray *array = 
-				//[unarchiver decodeObjectForKey:@"favorites"]; 
-			//[unarchiver finishDecoding];
-			//if (array){
-				//for (Item *item in array){
-					//[self.loadedData addObject:item];
-				//}
-				//[self filterData];
-				//[self.spinner stopAnimating];
-				//[self.refreshControl endRefreshing];
-				//self.cacheLoaded = YES;
-			//}
-		//}
-	//}
-
-	[self.syncData addOperationWithBlock:^{
-		c_yandex_music_get_favorites(
-				[token UTF8String], 
-				"100x100", uid, 
-				(__bridge void *)self, 
-				get_favorites);
-		//NSMutableData *data = [NSMutableData data];
-		//NSKeyedArchiver *archiver = [[NSKeyedArchiver alloc]initForWritingWithMutableData:data];
-		//[archiver encodeObject:self.loadedData forKey:@"favorites"];
-		//[archiver finishEncoding];
-		//[data writeToFile:self.cache atomically:YES];
-		//self.needRefresh = NO;
-	}];	
+    [self.syncData addOperationWithBlock:^{
+        long uid = [[NSUserDefaults standardUserDefaults] integerForKey:@"uid"];
+        if (!uid) {
+            uid = c_yandex_music_get_uid([token UTF8String]);
+            if (uid) [[NSUserDefaults standardUserDefaults] setInteger:uid forKey:@"uid"];
+        }
+        if (!uid) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.spinner stopAnimating];
+                [self.refreshControl endRefreshing];
+            });
+            return;
+        }
+        c_yandex_music_get_favorites([token UTF8String], "100x100", uid,
+                                     (__bridge void *)self, get_favorites);
+    }];
 }
-
 -(void)refresh:(id)sender{
 	self.needRefresh = YES;
 	[self reloadData];
@@ -256,5 +224,14 @@ static int get_favorites(void *data, track_t *track, const char *error)
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
 	[searchBar resignFirstResponder];
 }
+- (void)yandexTokenDidUpdate:(NSNotification *)notification {
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	[self reloadData];
+}
+
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 @end
 // vim:ft=objc

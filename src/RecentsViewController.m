@@ -16,6 +16,14 @@
 
 @implementation RecentsViewController
 
+- (id)initWithTitle:(NSString *)title
+{
+    if ((self = [super initWithStyle:UITableViewStylePlain])) {
+        self.title = title;
+    }
+    return self;
+}
+
 - (void)viewDidLoad {
 	self.title = @"Недавние";
 	self.appDelegate = [[UIApplication sharedApplication]delegate];

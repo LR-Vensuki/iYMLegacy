@@ -18,7 +18,7 @@
 @property NSInteger playing;
 @property NSInteger current;
 @property BOOL repeat;
-@property (strong) id appDelegate;
+@property (weak) id appDelegate;
 @property (strong) NSTimer *timer;
 @property (strong) NSTimer *downloadPlaylist;
 @property (weak) id delegate;

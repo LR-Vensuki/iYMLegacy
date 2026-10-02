@@ -1,0 +1,11 @@
+Package: com.legacyreborn.iymlegacy
+Name: iYMLegacy
+Version: 1.0
+Architecture: iphoneos-arm
+Section: Applications
+Priority: optional
+Depends: firmware (>= 6.0)
+Maintainer: LegacyReborn Project
+Author: LegacyReborn Project (fork of iYMLegacy by igkuzm)
+Homepage: https://github.com/LR-Vensuki/iYMLegacy
+Description: Yandex Music client for iOS 6: feed, search, favorites, playlists and playback. A fork of iYMLegacy by igkuzm.

@@ -42,9 +42,8 @@ static int get_tracks(void *data, track_t *track, const char *error)
 
 	if (track){
 		Item *t = [[Item alloc]initWithTrack:track token:self.item.token];
-		self.onAdd(t);
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			// Update your UI
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (self.onAdd) self.onAdd(t);
 		});
 	}
 	return 0;
@@ -75,60 +74,62 @@ static int get_tracks(void *data, track_t *track, const char *error)
 
 #pragma mark <ACTION SHEET DELEGATE>
 - (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
-	AppDelegate *a = [[UIApplication sharedApplication]delegate];
-	switch (buttonIndex){
-		case 0: 
-			{
-				if (self.isDir){
-					[self addTracks:^(Item *item){
-						if(self.additional)	
-							[a.player addToLast:item];
-						else {
-							[a.player addToTopAndPlay:item onDone:self.onDone];
-							self.additional = YES;
-						}
-					}];
-				} else
-					[a.player addToTopAndPlay:self.item onDone:self.onDone];
-				break;
-			}
-		case 1:
-			{
-				if (self.isDir){
-					[self addTracks:^(Item *item){
-						if(self.additional)	
-							[a.player addToLast:item];
-						else {
-							[a.player addAfterCurrent:item];
-							self.additional = YES;
-						}
-					}];
-				} else
-					[a.player addAfterCurrent:self.item];
-				if (self.onDone)
-					self.onDone();
-				break;
-			}
-		case 2:
-			{
-				if (self.isDir){
-					[self addTracks:^(Item *item){
-						[a.player addToLast:item];
-					}];
-				} else
-					[a.player addToLast:self.item];
-				if (self.onDone)
-					self.onDone();
-				break;
-			}
-		
-		default:
-			{
-				if (self.onDone)
-					self.onDone();
-				break;
-			} 
-	}
+    (void)actionSheet;
+    AppDelegate *a = [[UIApplication sharedApplication] delegate];
+    __weak ActionSheet *weakSelf = self;
+
+    switch (buttonIndex) {
+        case 0:
+            if (self.isDir) {
+                [self addTracks:^(Item *item){
+                    ActionSheet *sheet = weakSelf;
+                    if (!sheet) return;
+                    if (sheet.additional) {
+                        [a.player addToLast:item];
+                    } else {
+                        [a.player addToTopAndPlay:item onDone:sheet.onDone];
+                        sheet.additional = YES;
+                    }
+                }];
+            } else {
+                [a.player addToTopAndPlay:self.item onDone:self.onDone];
+            }
+            break;
+
+        case 1:
+            if (self.isDir) {
+                [self addTracks:^(Item *item){
+                    ActionSheet *sheet = weakSelf;
+                    if (!sheet) return;
+                    if (sheet.additional) {
+                        [a.player addToLast:item];
+                    } else {
+                        [a.player addAfterCurrent:item];
+                        sheet.additional = YES;
+                    }
+                }];
+            } else {
+                [a.player addAfterCurrent:self.item];
+            }
+            if (self.onDone)
+                self.onDone();
+            break;
+
+        case 2:
+            if (self.isDir) {
+                [self addTracks:^(Item *item){
+                    [a.player addToLast:item];
+                }];
+            } else {
+                [a.player addToLast:self.item];
+            }
+            if (self.onDone)
+                self.onDone();
+            break;
+
+        default:
+            break;
+    }
 }
 @end
 

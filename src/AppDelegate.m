@@ -7,6 +7,7 @@
  */
 
 #import "AppDelegate.h"
+#import "YandexConnect.h"
 #import <UIKit/UIResponder.h>
 #include "Foundation/Foundation.h"
 #include "UIKit/UIKit.h"
@@ -28,8 +29,8 @@
 	RootViewController *vc = 
 			[[RootViewController alloc]init];
 	[self.window setRootViewController:vc];
-	[self.window makeKeyAndVisible];	
-	
+	[self.window makeKeyAndVisible];
+	[YandexConnect refreshSavedTokenIfNeeded];
 	return true;
 }
 

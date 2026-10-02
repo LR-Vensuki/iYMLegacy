@@ -48,11 +48,9 @@
 	if (self = [self init]){
 		self.token = token;
 		if (track->realId)
-			[self setItemId:
-				[NSString stringWithUTF8String:track->realId]];
-		else
-			[self setItemId:
-				[NSString stringWithUTF8String:track->id]];
+			[self setItemId:[NSString stringWithUTF8String:track->realId]];
+		else if (track->id)
+			[self setItemId:[NSString stringWithUTF8String:track->id]];
 
 		if (track->type)
 		{
@@ -73,20 +71,18 @@
 			[self downloadSmallImage];
 		}
 		if (track->artists){
-			int i;
-			char artists[BUFSIZ] = "";
-			for (i=0;i<track->n_artists;i++){
-				artist_t artist = track->artists[i];
-				char *name = artist.name;
+			NSMutableString *artists = [NSMutableString string];
+			for (int i = 0; i < track->n_artists; ++i){
+				char *name = track->artists[i].name;
 				if (name){
-					strcat(artists, name);
-					if (i != track->n_artists - 1)
-						strcat(artists, ", ");
+					if ([artists length]) [artists appendString:@", "];
+					NSString *artistName = [NSString stringWithUTF8String:name];
+					if (artistName) [artists appendString:artistName];
 				}
 			}
-			self.subtitle = [NSString stringWithUTF8String:artists];
+			self.subtitle = artists;
 		}
-		if (track->albums){
+		if (track->albums && track->n_albums > 0){
 			if (track->albums[0].title){
 				self.albumTitle = [NSString stringWithUTF8String:track->albums[0].title];
 			}
@@ -120,28 +116,27 @@
 
 -(id)initWithAlbum:(album_t *)album token:(NSString *)token{
 	if (self = [self init]){
-		[self setItemId:
-			[NSString stringWithUTF8String:album->realId]];
+		if (album->realId)
+			[self setItemId:
+				[NSString stringWithUTF8String:album->realId]];
 		self.token = token;
 		self.itemType = ITEM_ALBUM;
 		self.subtitle = @"";
-		if (strcmp(album->type, "podcast") == 0)
+		if (album->type && strcmp(album->type, "podcast") == 0)
 			self.itemType = ITEM_PODCAST;
 		if (album->title)
 			self.title = [NSString stringWithUTF8String:album->title]; 
 		if (album->artists){
-			int i;
-			char artists[BUFSIZ] = "";
-			for (i=0;i<album->n_artists;i++){
-				artist_t artist = album->artists[i];
-				char *name = artist.name;
+			NSMutableString *artists = [NSMutableString string];
+			for (int i = 0; i < album->n_artists; ++i){
+				char *name = album->artists[i].name;
 				if (name){
-					strcat(artists, name);
-					if (i != album->n_artists - 1)
-						strcat(artists, ", ");
+					if ([artists length]) [artists appendString:@", "];
+					NSString *artistName = [NSString stringWithUTF8String:name];
+					if (artistName) [artists appendString:artistName];
 				}
 			}
-			self.subtitle = [NSString stringWithUTF8String:artists];
+			self.subtitle = artists;
 		}
 
 		if (album->coverUri){
@@ -159,7 +154,7 @@
 				stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", self.itemId]];
 		// check if file exists
 		if ([[NSFileManager defaultManager] fileExistsAtPath:filepath]){
-			dispatch_sync(dispatch_get_main_queue(), ^{
+			dispatch_async(dispatch_get_main_queue(), ^{
 				self.coverImage = [UIImage imageWithContentsOfFile:filepath];
 				if (self.imageView)
 					[self.imageView setImage:self.coverImage];
@@ -168,8 +163,8 @@
 			NSOperationQueue *operation = [[NSOperationQueue alloc]init];
 			[operation addOperationWithBlock:^{
 				NSData *data = [NSData dataWithContentsOfURL:self.coverUri];
-				[data writeToFile:filepath atomically:YES];
-				dispatch_sync(dispatch_get_main_queue(), ^{
+				if (data) [data writeToFile:filepath atomically:YES];
+				dispatch_async(dispatch_get_main_queue(), ^{
 					self.coverImage = [UIImage imageWithData:data];
 					if (self.imageView)
 						[self.imageView setImage:self.coverImage];
@@ -180,20 +175,27 @@
 
 static int get_track_with_image(void *data, track_t *track, const char *error){
 	Item *self = (__bridge Item *)data;
-	if (error){
+	if (error)
 		NSLog(@"%s", error);
-		return 0;
-	}
-	if (track){
-			NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:track->coverUri]]; 
-			NSData *data = [NSData dataWithContentsOfURL:url];
-			// save image to cache
-			[data writeToFile:self.artImageURL.path atomically:true];
-		dispatch_sync(dispatch_get_main_queue(), ^{
-				self.artImage = [UIImage imageWithData:data];
-				self.hasAtrImage = YES;
-				if (self.onImageReady)
-					self.onImageReady(self);
+
+	if (track && track->coverUri){
+		NSString *coverString = [NSString stringWithUTF8String:track->coverUri];
+		NSURL *url = coverString ? [NSURL URLWithString:coverString] : nil;
+		NSData *imageData = url ? [NSData dataWithContentsOfURL:url] : nil;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (imageData.length > 0) {
+				self.artImage = [UIImage imageWithData:imageData];
+				self.hasAtrImage = (self.artImage != nil);
+				if (self.artImage)
+					[imageData writeToFile:self.artImageURL.path atomically:YES];
+			}
+			if (self.onImageReady)
+				self.onImageReady(self);
+		});
+	} else {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (self.onImageReady)
+				self.onImageReady(self);
 		});
 	}
 	return 0;
@@ -201,20 +203,26 @@ static int get_track_with_image(void *data, track_t *track, const char *error){
 
 static int get_file_url(void *data, const char *url_str, const char *error){
 	Item *self = (__bridge Item *)data;
-	if (error){
+	if (error)
 		NSLog(@"%s", error);
-		return 0;
-	}
-	if (url_str){
-		NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:url_str]];
-		self.downloadURL = url;
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			self.hasDownloadURL = YES;
+
+	if (url_str) {
+		NSString *urlString = [NSString stringWithUTF8String:url_str];
+		NSURL *url = urlString ? [NSURL URLWithString:urlString] : nil;
+		if (url)
+			self.downloadURL = url;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			self.hasDownloadURL = (url != nil);
 			if (self.onDownloadURLReady)
-				self.onDownloadURLReady(self);	
+				self.onDownloadURLReady(self);
 		});
-		return 1;
+		return url != nil;
 	}
+
+	dispatch_async(dispatch_get_main_queue(), ^{
+		if (self.onDownloadURLReady)
+			self.onDownloadURLReady(self);
+	});
 	return 0;
 }
 
@@ -264,13 +272,15 @@ static int get_file_url(void *data, const char *url_str, const char *error){
 			[self.downloadFile cancelAllOperations];
 			[self.downloadFile addOperationWithBlock:^{
 				NSData *data = [NSData dataWithContentsOfURL:item.downloadURL];
-				[data writeToURL:url atomically:YES];
-				dispatch_sync(dispatch_get_main_queue(), ^{
-					self.hasFile = YES;
-					self.hasDownloadURL = YES;
-					self.downloadURL = url;
+				BOOL saved = (data != nil) && [data writeToURL:url atomically:YES];
+				dispatch_async(dispatch_get_main_queue(), ^{
+					self.hasFile = saved;
+					self.hasDownloadURL = (item.downloadURL != nil);
+					if (saved) {
+						self.downloadURL = url;
+					}
 					if (onFileReady)
-						onFileReady(self);	
+						onFileReady(self);
 				});
 			}];
 		}];
@@ -286,8 +296,10 @@ static int get_file_url(void *data, const char *url_str, const char *error){
 	// check if file exists
 	if ([[NSFileManager defaultManager] fileExistsAtPath:filepath]){
 		self.artImage = [UIImage imageWithContentsOfFile:self.artImageURL.path];
-		if (self.onImageReady)
-			self.onImageReady(self);
+		void (^completion)(Item *) = self.onImageReady;
+		self.onImageReady = nil;
+		if (completion)
+			completion(self);
 	} else {
 		// download image
 		[self.prepareImage cancelAllOperations];
