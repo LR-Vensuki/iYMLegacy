@@ -9,66 +9,62 @@
 #include "AppDelegate.h"
 #include "Foundation/Foundation.h"
 #include "UIKit/UIKit.h"
-#import "FeedViewController.h"
+#import "HomeViewController.h"
 #import "FavoritesViewController.h"
 #import "SearchViewController.h"
 #import "PlaylistsViewController.h"
 #import "PlayerViewController.h"
+#import "YandexConnect.h"
+#import "YMTheme.h"
 
 @implementation RootViewController
+
+- (UINavigationController *)tab:(UIViewController *)vc title:(NSString *)title glyph:(YMGlyph)glyph tag:(NSInteger)tag
+{
+	YMTheme *t = [YMTheme current];
+	UINavigationController *nc = [[UINavigationController alloc] initWithRootViewController:vc];
+	UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:title image:nil tag:tag];
+	[item setFinishedSelectedImage:[t tabGlyph:glyph selected:YES]
+	   withFinishedUnselectedImage:[t tabGlyph:glyph selected:NO]];
+	[nc setTabBarItem:item];
+	return nc;
+}
+
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	
-	// feed view
-	FeedViewController *feedvc = 
-		[[FeedViewController alloc]init];
-	UINavigationController *feednc =
-		[[UINavigationController alloc]initWithRootViewController:feedvc];
-	UITabBarItem *feedtbi = [[UITabBarItem alloc]
-			initWithTabBarSystemItem:UITabBarSystemItemFeatured tag:0];
-	[feednc setTabBarItem:feedtbi];
 
-	// search view
-	SearchViewController *searchvc = 
-		[[SearchViewController alloc]init];
-	UINavigationController *searchnc =
-		[[UINavigationController alloc]initWithRootViewController:searchvc];
-	UITabBarItem *searchtbi = [[UITabBarItem alloc]
-			initWithTabBarSystemItem:UITabBarSystemItemSearch tag:1];
-	[searchnc setTabBarItem:searchtbi];
+	[self setViewControllers:@[
+		[self tab:[[HomeViewController alloc] init] title:@"Главная" glyph:YMGlyphHome tag:0],
+		[self tab:[[SearchViewController alloc] init] title:@"Поиск" glyph:YMGlyphSearch tag:1],
+		[self tab:[[PlayerViewController alloc] init] title:@"Плеер" glyph:YMGlyphNote tag:2],
+		[self tab:[[FavoritesViewController alloc] init] title:@"Избранное" glyph:YMGlyphHeartFilled tag:3],
+		[self tab:[[PlaylistsViewController alloc] init] title:@"Плейлисты" glyph:YMGlyphPlaylists tag:4],
+	] animated:NO];
 
-	// player view
-	PlayerViewController *pvc = 
-		[[PlayerViewController alloc]init];
-	UINavigationController *pnc =
-		[[UINavigationController alloc]initWithRootViewController:pvc];
-	UITabBarItem *ptbi = [[UITabBarItem alloc]
-		initWithTitle:@"Плеер" image:[UIImage imageNamed:@"player"] tag:2];
-			//initWithTabBarSystemItem:UITabBarSystemItemRecents tag:3];
-	[pnc setTabBarItem:ptbi];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(tokenDidUpdate:)
+			name:YandexTokenDidUpdateNotification object:nil];
+}
 
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
-	// favorites view
-	FavoritesViewController *favvc = 
-		[[FavoritesViewController alloc]init];
-	UINavigationController *favnc =
-		[[UINavigationController alloc]initWithRootViewController:favvc];
-	UITabBarItem *favtbi = [[UITabBarItem alloc]
-			initWithTabBarSystemItem:UITabBarSystemItemFavorites tag:3];
-	[favnc setTabBarItem:favtbi];
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	[self presentLoginIfNeeded];
+}
 
-	// playlists view
-	PlaylistsViewController *plvc = 
-		[[PlaylistsViewController alloc]init];
-	UINavigationController *plnc =
-		[[UINavigationController alloc]initWithRootViewController:plvc];
-	UITabBarItem *pltbi = [[UITabBarItem alloc]
-		initWithTitle:@"Плейлисты" image:[UIImage imageNamed:@"playlist"] tag:4];
-			//initWithTabBarSystemItem:UITabBarSystemItemRecents tag:3];
-	[plnc setTabBarItem:pltbi];
+- (void)tokenDidUpdate:(NSNotification *)notification {
+	[self presentLoginIfNeeded];
+}
 
-
-	[self setViewControllers:@[feednc, searchnc, pnc, favnc, plnc] animated:TRUE];
+- (void)presentLoginIfNeeded {
+	if ([[NSUserDefaults standardUserDefaults] valueForKey:@"token"])
+		return;
+	if (self.presentedViewController || !self.view.window)
+		return;
+	YandexConnect *yc = [[YandexConnect alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+	[self presentViewController:yc animated:YES completion:nil];
 }
 
 @end

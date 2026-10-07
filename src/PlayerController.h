@@ -9,6 +9,18 @@
 #include "Foundation/Foundation.h"
 #import "MediaPlayer/MediaPlayer.h"
 #import "Item.h"
+extern NSString * const YMPlayerTrackDidChangeNotification;
+extern NSString * const YMPlayerStateDidChangeNotification;
+extern NSString * const YMPlayerQueueDidChangeNotification;
+
+typedef enum {
+	YMRepeatOff,
+	YMRepeatAll,
+	YMRepeatOne,
+} YMRepeatMode;
+
+#define YMStationMyWave @"user:onyourwave"
+
 @protocol PlayerControllerDelegate <NSObject>
 -(void)playerControllerStartPlayTrack:(Item *)track;
 @end
@@ -17,7 +29,13 @@
 @property (strong,nonatomic) Item *nowPlaying;
 @property NSInteger playing;
 @property NSInteger current;
-@property BOOL repeat;
+@property (nonatomic) YMRepeatMode queueRepeat;
+@property (nonatomic) BOOL shuffle;
+@property (strong) NSArray *unshuffled;
+/* rotor station being played ("My Wave"), nil for an ordinary queue */
+@property (strong) NSString *station;
+@property (strong) NSString *stationBatch;
+@property BOOL loadingStation;
 @property (weak) id appDelegate;
 @property (strong) NSTimer *timer;
 @property (strong) NSTimer *downloadPlaylist;
@@ -28,6 +46,11 @@
 -(void)playCurrent:(void (^)())onDone;
 -(void)next;
 -(void)prev;
+-(void)togglePlayPause;
+-(void)startStation:(NSString *)station onDone:(void (^)(NSString *error))onDone;
+-(void)playIndex:(NSInteger)index onDone:(void (^)())onDone;
+/* replace the queue with %items and start playing at %index */
+-(void)playItems:(NSArray *)items startingAt:(NSInteger)index onDone:(void (^)())onDone;
 
 @end
 

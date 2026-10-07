@@ -236,7 +236,9 @@ int c_yandex_music_run_method(
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Accept: application/json");
     if (body)
-        headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+        headers = curl_slist_append(headers, body[0] == '{'
+            ? "Content-Type: application/json"
+            : "Content-Type: application/x-www-form-urlencoded");
     headers = curl_slist_append(headers, "Accept-Language: ru");
     headers = curl_slist_append(headers, authorization);
 
@@ -1768,4 +1770,141 @@ int c_yandex_music_playlist_add_tracks(
 
     free(body);
     return ret;
+}
+
+/* Rotor ("My Wave" and other radio stations) */
+struct c_yandex_music_station_tracks_data {
+	void *user_data;
+	int (*callback)(void *, const char *, track_t *, const char *);
+	const char *image_size;
+};
+
+static void c_yandex_music_get_station_tracks_cb(
+		void *data, const char *str, const char *error)
+{
+	struct c_yandex_music_station_tracks_data *d = data;
+	const char *size = d->image_size ? d->image_size : "orig";
+
+	if (error) {
+		if (d->callback)
+			d->callback(d->user_data, NULL, NULL, error);
+		return;
+	}
+	cJSON *json = str ? cJSON_Parse(str) : NULL;
+	if (!json) {
+		if (d->callback)
+			d->callback(d->user_data, NULL, NULL, "Invalid rotor JSON");
+		return;
+	}
+
+	const char *batch_id = NULL;
+	cJSON *batch = cJSON_GetObjectItem(json, "batchId");
+	if (cJSON_IsString(batch))
+		batch_id = batch->valuestring;
+
+	cJSON *sequence = cJSON_GetObjectItem(json, "sequence");
+	cJSON *item;
+	for (item = sequence ? sequence->child : NULL; item; item = item->next) {
+		cJSON *track = cJSON_GetObjectItem(item, "track");
+		if (!track)
+			continue;
+		track_t *p = c_yandex_music_track_new_from_json(track);
+		if (!p)
+			continue;
+		ym_replace_image_uri(&p->coverUri, size);
+		ym_replace_image_uri(&p->ogImage, size);
+		int stop = d->callback ? d->callback(d->user_data, batch_id, p, NULL) : 0;
+		c_yandex_music_track_free(p);
+		if (stop)
+			break;
+	}
+	cJSON_Delete(json);
+}
+
+int c_yandex_music_get_station_tracks(
+		const char *token,
+		const char *station,
+		const char *queue_track_id,
+		const char *image_size,
+		void *user_data,
+		int (*callback)(void *user_data, const char *batch_id,
+		                track_t *track, const char *error))
+{
+	if (!token || !*token || !station || !*station) {
+		if (callback) callback(user_data, NULL, NULL, "Missing token or station");
+		return -1;
+	}
+
+	struct c_yandex_music_station_tracks_data d =
+		{user_data, callback, image_size};
+
+	char method[BUFSIZ];
+	snprintf(method, sizeof(method), "rotor/station/%s/tracks", station);
+
+	char queue[256] = "";
+	if (queue_track_id && *queue_track_id)
+		snprintf(queue, sizeof(queue), "queue=%s", queue_track_id);
+
+	return c_yandex_music_run_method(
+			"GET", token, NULL, &d, c_yandex_music_get_station_tracks_cb,
+			method, "settings2=true", *queue ? queue : NULL, NULL);
+}
+
+static void c_yandex_music_rotor_feedback_cb(
+		void *data, const char *str, const char *error)
+{
+	(void)data; (void)str;
+	if (error)
+		fprintf(stderr, "rotor feedback: %s\n", error);
+}
+
+int c_yandex_music_rotor_feedback(
+		const char *token,
+		const char *station,
+		const char *batch_id,
+		const char *type,
+		const char *track_id,
+		double total_played_seconds)
+{
+	if (!token || !*token || !station || !*station || !type || !*type)
+		return -1;
+
+	char method[BUFSIZ];
+	snprintf(method, sizeof(method), "rotor/station/%s/feedback", station);
+
+	char batch[256] = "";
+	if (batch_id && *batch_id)
+		snprintf(batch, sizeof(batch), "batch-id=%s", batch_id);
+
+	time_t now = time(NULL);
+	char timestamp[64];
+	strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S.000Z", gmtime(&now));
+
+	cJSON *body = cJSON_CreateObject();
+	if (!body)
+		return -1;
+	cJSON_AddStringToObject(body, "type", type);
+	cJSON_AddStringToObject(body, "timestamp", timestamp);
+	if (strcmp(type, "radioStarted") == 0) {
+		char from[300];
+		snprintf(from, sizeof(from), "mobile-radio-%s", station);
+		for (char *c = from; *c; ++c)
+			if (*c == ':') *c = '-';
+		cJSON_AddStringToObject(body, "from", from);
+	}
+	if (track_id && *track_id)
+		cJSON_AddStringToObject(body, "trackId", track_id);
+	if (strcmp(type, "trackFinished") == 0 || strcmp(type, "skip") == 0)
+		cJSON_AddNumberToObject(body, "totalPlayedSeconds", total_played_seconds);
+
+	char *printed = cJSON_PrintUnformatted(body);
+	cJSON_Delete(body);
+	if (!printed)
+		return -1;
+
+	int ret = c_yandex_music_run_method(
+			"POST", token, printed, NULL, c_yandex_music_rotor_feedback_cb,
+			method, *batch ? batch : NULL, NULL);
+	free(printed);
+	return ret;
 }

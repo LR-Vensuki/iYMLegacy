@@ -77,6 +77,8 @@ void c_yandex_oauth_code_from_user(
 			)
 		);
 
+/* Polls until the user confirms the code. Between polls the callback is
+ * called with all-NULL arguments; returning non-zero from it stops polling. */
 void c_yandex_oauth_get_token_from_user(
 		const char *device_code, 
 		const char *client_id,    //id of application in Yandex

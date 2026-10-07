@@ -13,6 +13,9 @@
 #include <string.h>
 #import "../cYandexMusic/cYandexMusic.h"
 
+NSString * const YMItemCoverDidLoadNotification = @"YMItemCoverDidLoadNotification";
+NSString * const YMItemArtDidLoadNotification = @"YMItemArtDidLoadNotification";
+
 @implementation Item
 - (id)init
 {
@@ -158,6 +161,7 @@
 				self.coverImage = [UIImage imageWithContentsOfFile:filepath];
 				if (self.imageView)
 					[self.imageView setImage:self.coverImage];
+				[[NSNotificationCenter defaultCenter] postNotificationName:YMItemCoverDidLoadNotification object:self];
 			});
 		} else {
 			NSOperationQueue *operation = [[NSOperationQueue alloc]init];
@@ -168,6 +172,8 @@
 					self.coverImage = [UIImage imageWithData:data];
 					if (self.imageView)
 						[self.imageView setImage:self.coverImage];
+					if (self.coverImage)
+						[[NSNotificationCenter defaultCenter] postNotificationName:YMItemCoverDidLoadNotification object:self];
 				});
 			}];
 		}
@@ -306,7 +312,7 @@ static int get_file_url(void *data, const char *url_str, const char *error){
 		[self.prepareImage addOperationWithBlock:^{
 			c_yandex_music_get_track_by_id(
 					[self.token UTF8String], 
-					NULL, 
+					"400x400", 
 					[self.itemId UTF8String], 
 					(__bridge void *)self, 
 					get_track_with_image);

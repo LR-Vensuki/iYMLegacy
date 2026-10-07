@@ -312,6 +312,11 @@ void c_yandex_oauth_get_token_from_user(
         sleep((unsigned int)interval);
         elapsed += interval;
 
+        /* A callback with no token and no error is a "still waiting" tick:
+         * a non-zero return cancels the polling. */
+        if (callback(user_data, NULL, 0, NULL, NULL))
+            return;
+
         CURL *curl = curl_easy_init();
         if (!curl) {
             callback(user_data, NULL, 0, NULL, "curl_easy_init failed");

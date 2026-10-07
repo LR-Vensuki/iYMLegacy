@@ -1,25 +1,20 @@
 /**
  * File              : YandexConnect.h
- * Patched for iYMLegacy legacy iOS build.
+ * Sign-in screen: Yandex OAuth device flow with a QR code for ya.ru/device
+ * and the confirmation code.
  */
 
 #import <UIKit/UIKit.h>
 
 extern NSString * const YandexTokenDidUpdateNotification;
 
-@interface YandexConnect : UIViewController <UIWebViewDelegate>
-{
-}
-
-@property (strong) UIWebView *webView;
-@property (strong) UIActivityIndicatorView *spinner;
-@property (strong) UIAlertView *authorizationAlert;
-@property CGRect frame;
+@interface YandexConnect : UIViewController
 
 - (id)initWithFrame:(CGRect)frame;
 - (void)beginDeviceAuthorization;
 
 + (void)refreshSavedTokenIfNeeded;
++ (void)signOut;
 
 @end
 

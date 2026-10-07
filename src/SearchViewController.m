@@ -5,6 +5,7 @@
  * Last Modified Date: 13.09.2023
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
  */
+#import "YMTheme.h"
 #import "SearchViewController.h"
 #import "SearchViewControllerDetail.h"
 #include "Item.h"
@@ -20,6 +21,7 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	[[YMTheme current] styleController:self];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:YandexTokenDidUpdateNotification object:nil];
 	[self setTitle:@"Поиск"];
 	
@@ -57,7 +59,7 @@
 	//spinner
 	self.spinner = 
 		[[UIActivityIndicatorView alloc] 
-		initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+		initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle];
 	[self.tableView addSubview:self.spinner];
 	self.spinner.tag = 12;
 }
@@ -255,7 +257,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 			if (token){
 				UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 				UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
-                if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
+                if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle]; cell.accessoryView = spinner; }
 				[spinner startAnimating];
 				ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:NO onDone:^{
 					[spinner stopAnimating];
@@ -302,7 +304,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	self.selected = [self.best objectAtIndex:indexPath.item];
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
-    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
+    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle]; cell.accessoryView = spinner; }
 	[spinner startAnimating];
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
@@ -335,6 +337,21 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	NSString *title = [self tableView:tableView titleForHeaderInSection:section];
+	if (!title.length)
+		return nil;
+	return [[YMTheme current] sectionHeaderWithTitle:title width:tableView.bounds.size.width grouped:NO];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	return [self tableView:tableView titleForHeaderInSection:section].length ? 24 : 0;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[[YMTheme current] styleCell:cell];
 }
 
 @end

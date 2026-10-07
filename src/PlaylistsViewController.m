@@ -5,6 +5,7 @@
  * Last Modified Date: 13.09.2023
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
  */
+#import "YMTheme.h"
 #import "PlaylistsViewController.h"
 #import "TrackListViewController.h"
 #import "PlayerViewController.h"
@@ -19,6 +20,7 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	[[YMTheme current] styleController:self];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	self.title = @"Плейлисты";
 	self.appDelegate = [[UIApplication sharedApplication]delegate];
@@ -191,7 +193,7 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 					 self.selected = [self.data objectAtIndex:indexPath.item];
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
-    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray]; cell.accessoryView = spinner; }
+    if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle]; cell.accessoryView = spinner; }
 	[spinner startAnimating];
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
@@ -260,6 +262,10 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[[YMTheme current] styleCell:cell];
 }
 
 @end

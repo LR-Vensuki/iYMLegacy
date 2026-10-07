@@ -4,137 +4,438 @@
  * Date              : 22.08.2023
  * Last Modified Date: 13.09.2023
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
+ *
+ * Now Playing: artwork that flips over to the queue like the iPod, the
+ * scrubber, transport controls, shuffle/repeat, like and volume.
  */
 #import "PlayerViewController.h"
+#import <QuartzCore/QuartzCore.h>
+#import <MediaPlayer/MediaPlayer.h>
 #include "Item.h"
-#include "UIKit/UIKit.h"
-#include "Foundation/Foundation.h"
-#import "YandexConnect.h"
+#import "YMTheme.h"
 #import "../cYandexMusic/cYandexMusic.h"
+
+@interface PlayerViewController ()
+@property (strong) UIView *artContainer;
+@property (strong) UIImageView *artView;
+@property (strong) UITableView *queueTable;
+@property BOOL showingQueue;
+@property (strong) UILabel *stationLabel;
+@property (strong) UILabel *titleLabel;
+@property (strong) UILabel *artistLabel;
+@property (strong) UIButton *likeButton;
+@property (strong) UIImageView *panel;
+@property (strong) UISlider *scrubber;
+@property (strong) UILabel *elapsedLabel;
+@property (strong) UILabel *remainingLabel;
+@property (strong) UIButton *playButton;
+@property (strong) UIButton *prevButton;
+@property (strong) UIButton *nextButton;
+@property (strong) UIButton *shuffleButton;
+@property (strong) UIButton *repeatButton;
+@property (strong) MPVolumeView *volume;
+@property (strong) NSTimer *timer;
+@property BOOL scrubbing;
+@end
 
 @implementation PlayerViewController
 
+- (id)init
+{
+	if ((self = [super init]))
+		self.title = @"Плеер";
+	return self;
+}
+
+- (UIButton *)roundButton:(YMGlyph)glyph diameter:(CGFloat)d accent:(BOOL)accent action:(SEL)action
+{
+	YMTheme *t = [YMTheme current];
+	UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+	b.frame = CGRectMake(0, 0, d + 4, d + 4);
+	b.adjustsImageWhenHighlighted = NO;
+	[b setImage:[t roundButtonWithDiameter:d glyph:glyph accent:accent pressed:NO] forState:UIControlStateNormal];
+	[b setImage:[t roundButtonWithDiameter:d glyph:glyph accent:accent pressed:YES] forState:UIControlStateHighlighted];
+	[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+	return b;
+}
+
+- (UIButton *)smallButtonWithAction:(SEL)action
+{
+	UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+	b.frame = CGRectMake(0, 0, 40, 40);
+	b.showsTouchWhenHighlighted = YES;
+	[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+	return b;
+}
+
+- (UILabel *)label:(UIFont *)font color:(UIColor *)color
+{
+	UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
+	l.backgroundColor = [UIColor clearColor];
+	l.font = font;
+	l.textColor = color;
+	l.textAlignment = NSTextAlignmentCenter;
+	return l;
+}
+
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Плеер";
-	self.appDelegate = [[UIApplication sharedApplication]delegate];
-	self.loadedData = self.appDelegate.player.playlist;
-	self.token = [[NSUserDefaults standardUserDefaults]valueForKey:@"token"];
-	self.liked = false;
-	self.doLike = [[NSOperationQueue alloc]init];
-	
-	// ToolBar	
-	self.navigationController.toolbarHidden = NO;
-	
-	self.like = [[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"heart"] style:UIBarButtonItemStylePlain target:self action:@selector(likeIsPushed:)];
+	YMTheme *t = [YMTheme current];
+	self.appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	self.doLike = [[NSOperationQueue alloc] init];
+	self.view.backgroundColor = [t backgroundPattern];
 
-	self.share = [[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareIsPushed:)];
-	
-	self.label = [[UILabel alloc]initWithFrame:CGRectMake(0.0 , 6.0, self.view.frame.size.width, 16)];
-	[self.label setFont:[UIFont fontWithName:@"Helvetica-Bold" size:14]];
-	[self.label setBackgroundColor:[UIColor clearColor]];
-	[self.label setTextColor:[UIColor whiteColor]];
-	//[self.label setTextColor:[UIColor colorWithRed:157.0/255.0 green:157.0/255.0 blue:157.0/255.0 alpha:1.0]];
-	//[self.label setText:@"Title"];
-	[self.label setTextAlignment:NSTextAlignmentCenter];
-	
-	self.subLabel = [[UILabel alloc]initWithFrame:CGRectMake(0 , 25, self.view.frame.size.width, 14)];
-	[self.subLabel setFont:[UIFont fontWithName:@"Helvetica" size:12]];
-	[self.subLabel setBackgroundColor:[UIColor clearColor]];
-	[self.subLabel setTextColor:[UIColor whiteColor]];
-	//[self.subLabel setTextColor:[UIColor colorWithRed:157.0/255.0 green:157.0/255.0 blue:157.0/255.0 alpha:1.0]];
-	//[self.subLabel setText:@"SubTitle"];
-	[self.subLabel setTextAlignment:NSTextAlignmentCenter];
-	
-	UIView *labelView = [[UIView alloc]initWithFrame:CGRectMake(0 , 0, self.view.frame.size.width, 40)];
-	[labelView addSubview:self.label];
-	[labelView addSubview:self.subLabel];
-	
-	//UIBarButtonItem *title = [[UIBarButtonItem alloc] initWithCustomView:self.label];
-	self.space = [[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:self action:nil];	
-	self.space.customView = labelView;
-	
-	[self setToolbarItems:@[self.like, self.space, self.share] animated:NO];
+	self.navigationItem.rightBarButtonItem = [t barButtonWithGlyph:YMGlyphQueue target:self action:@selector(flip:)];
 
-	// close button
-	//self.closeButtonItem = 
-		//[[UIBarButtonItem alloc]
-			//initWithTitle:@"Закрыть" style:UIBarButtonItemStyleDone target:self action:@selector(closeButtonPushed:)];
-	//self.navigationItem.leftBarButtonItem = self.closeButtonItem;
+	/* artwork and, on its back, the queue */
+	self.artContainer = [[UIView alloc] initWithFrame:CGRectZero];
+	self.artContainer.backgroundColor = [UIColor clearColor];
+	self.artContainer.layer.shadowColor = [UIColor blackColor].CGColor;
+	self.artContainer.layer.shadowOpacity = 0.5;
+	self.artContainer.layer.shadowOffset = CGSizeMake(0, 3);
+	self.artContainer.layer.shadowRadius = 5;
+	[self.view addSubview:self.artContainer];
 
-	// edit button
-	self.navigationItem.rightBarButtonItem = self.editButtonItem;
+	self.artView = [[UIImageView alloc] initWithFrame:CGRectZero];
+	self.artView.contentMode = UIViewContentModeScaleAspectFill;
+	self.artView.clipsToBounds = YES;
+	self.artView.userInteractionEnabled = YES;
+	self.artView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	self.artView.layer.borderWidth = 1;
+	self.artView.layer.borderColor = YMRGBA(0, 0, 0, 0.35).CGColor;
+	[self.artContainer addSubview:self.artView];
+	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(flip:)];
+	[self.artView addGestureRecognizer:tap];
 
-	// refresh control
-	self.refreshControl=
-		[[UIRefreshControl alloc]init];
-	[self.refreshControl setAttributedTitle:[[NSAttributedString alloc] initWithString:@""]];
-	[self.refreshControl addTarget:self action:@selector(refresh:) forControlEvents:UIControlEventValueChanged];
+	self.queueTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+	self.queueTable.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	self.queueTable.dataSource = self;
+	self.queueTable.delegate = self;
+	self.queueTable.rowHeight = 48;
+	[t styleTableView:self.queueTable];
+	self.queueTable.layer.borderWidth = 1;
+	self.queueTable.layer.borderColor = YMRGBA(0, 0, 0, 0.35).CGColor;
 
-	// search bar
-	self.searchBar = 
-		[[UISearchBar alloc] initWithFrame:CGRectMake(0,70,320,44)];
-	self.tableView.tableHeaderView=self.searchBar;	
-	self.searchBar.delegate = self;
-	self.searchBar.placeholder = @"Поиск:";
+	/* track info */
+	self.stationLabel = [self label:[UIFont boldSystemFontOfSize:11] color:t.leather ? t.accentDark : t.accent];
+	if (t.kind == YMThemeYandex) self.stationLabel.textColor = YMRGB(200, 150, 0);
+	self.titleLabel = [self label:[UIFont boldSystemFontOfSize:17] color:t.text];
+	self.artistLabel = [self label:[UIFont systemFontOfSize:14] color:t.subtext];
+	UIColor *emboss = (t.kind == YMThemeYandexDark) ? YMRGBA(0, 0, 0, 0.9) : YMRGBA(255, 255, 255, 0.75);
+	for (UILabel *l in @[self.stationLabel, self.titleLabel, self.artistLabel]) {
+		l.shadowColor = emboss;
+		l.shadowOffset = CGSizeMake(0, 1);
+		[self.view addSubview:l];
+	}
+	self.likeButton = [self smallButtonWithAction:@selector(likeIsPushed:)];
+	[self.view addSubview:self.likeButton];
 
-	// editing style
-	self.tableView.allowsMultipleSelectionDuringEditing = false;
-	
-	// load data
-	//[self reloadData];
+	/* control panel */
+	self.panel = [[UIImageView alloc] initWithFrame:CGRectZero];
+	self.panel.userInteractionEnabled = YES;
+	[self.view addSubview:self.panel];
+
+	self.scrubber = [[UISlider alloc] initWithFrame:CGRectZero];
+	[self.scrubber setMinimumTrackImage:[t sliderTrack:YES] forState:UIControlStateNormal];
+	[self.scrubber setMaximumTrackImage:[t sliderTrack:NO] forState:UIControlStateNormal];
+	[self.scrubber setThumbImage:[t sliderThumb] forState:UIControlStateNormal];
+	[self.scrubber addTarget:self action:@selector(scrubStart:) forControlEvents:UIControlEventTouchDown];
+	[self.scrubber addTarget:self action:@selector(scrubMove:) forControlEvents:UIControlEventValueChanged];
+	[self.scrubber addTarget:self action:@selector(scrubEnd:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+	[self.panel addSubview:self.scrubber];
+
+	UIColor *panelShadow = (t.kind == YMThemeClassic || t.kind == YMThemeYandex) ? YMRGBA(255, 255, 255, 0.8) : YMRGBA(0, 0, 0, 0.7);
+	self.elapsedLabel = [self label:[UIFont boldSystemFontOfSize:11] color:t.panelText];
+	self.remainingLabel = [self label:[UIFont boldSystemFontOfSize:11] color:t.panelText];
+	for (UILabel *l in @[self.elapsedLabel, self.remainingLabel]) {
+		l.shadowColor = panelShadow;
+		l.shadowOffset = CGSizeMake(0, (t.kind == YMThemeClassic || t.kind == YMThemeYandex) ? 1 : -1);
+		[self.panel addSubview:l];
+	}
+
+	self.prevButton = [self roundButton:YMGlyphPrev diameter:44 accent:NO action:@selector(prev:)];
+	self.nextButton = [self roundButton:YMGlyphNext diameter:44 accent:NO action:@selector(next:)];
+	self.playButton = [self roundButton:YMGlyphPlay diameter:58 accent:YES action:@selector(playPause:)];
+	self.shuffleButton = [self smallButtonWithAction:@selector(toggleShuffle:)];
+	self.repeatButton = [self smallButtonWithAction:@selector(toggleRepeat:)];
+	for (UIView *v in @[self.prevButton, self.nextButton, self.playButton, self.shuffleButton, self.repeatButton])
+		[self.panel addSubview:v];
+
+	self.volume = [[MPVolumeView alloc] initWithFrame:CGRectZero];
+	self.volume.showsRouteButton = YES;
+	if ([self.volume respondsToSelector:@selector(setVolumeThumbImage:forState:)]) {
+		[self.volume setMinimumVolumeSliderImage:[t sliderTrack:YES] forState:UIControlStateNormal];
+		[self.volume setMaximumVolumeSliderImage:[t sliderTrack:NO] forState:UIControlStateNormal];
+		[self.volume setVolumeThumbImage:[t sliderThumb] forState:UIControlStateNormal];
+	}
+	[self.panel addSubview:self.volume];
+
+	NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+	[nc addObserver:self selector:@selector(trackDidChange:) name:YMPlayerTrackDidChangeNotification object:nil];
+	[nc addObserver:self selector:@selector(stateDidChange:) name:YMPlayerStateDidChangeNotification object:nil];
+	[nc addObserver:self selector:@selector(queueDidChange:) name:YMPlayerQueueDidChangeNotification object:nil];
+	[nc addObserver:self selector:@selector(artDidLoad:) name:YMItemArtDidLoadNotification object:nil];
+	[nc addObserver:self selector:@selector(artDidLoad:) name:YMItemCoverDidLoadNotification object:nil];
 }
 
--(void)closeButtonPushed:(id)sender{
-	[self.navigationController dismissViewControllerAnimated:true completion:nil];
+- (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	[self.timer invalidate];
 }
 
--(void)editing:(BOOL)editing{
-	[self setEditing:editing];
-	if (self.editing)
-		[self.navigationItem setHidesBackButton:YES animated:YES];
-	else
-		[self.navigationItem setHidesBackButton:NO animated:YES];
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	self.token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	[self.appDelegate.player setDelegate:self];
+	[self refreshTrack];
+	[self refreshControls];
+	[self.queueTable reloadData];
+	[self.timer invalidate];
+	self.timer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(tick:) userInfo:nil repeats:YES];
+	[self tick:nil];
 }
 
-//hide searchbar by default
-- (void) viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-		[self reloadData];
-    [self.tableView setContentOffset:CGPointMake(0, 44)];
-		// check track is liked
-		[self.appDelegate.player setDelegate:self];
-		if (self.appDelegate.player.current >=0){
-			self.current = self.appDelegate.player.nowPlaying;
-			if (self.current){
-				[self checkTrackIsLiked:self.current];
-				// set title/subtitle
-				[self.label setText:self.current.title];
-				[self.subLabel setText:self.current.subtitle];
-			}
-		}
-}
-- (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
-    [self.tableView setContentOffset:CGPointMake(0, 44) animated:YES];
-    [self.searchBar resignFirstResponder];
+- (void)viewWillDisappear:(BOOL)animated {
+	[super viewWillDisappear:animated];
+	[self.timer invalidate];
+	self.timer = nil;
 }
 
--(void)filterData{
-	if (self.searchBar.text && self.searchBar.text.length > 0)
-		self.data = [self.loadedData filteredArrayUsingPredicate:
-				[NSPredicate predicateWithFormat:@"self.title contains[c] %@", self.searchBar.text]];
-	else
-		self.data = self.loadedData;
-	[self.tableView reloadData];
+#pragma mark - layout
+
+- (void)viewWillLayoutSubviews {
+	[super viewWillLayoutSubviews];
+	CGSize b = self.view.bounds.size;
+	BOOL landscape = b.width > b.height;
+	CGFloat panelH = 128;
+	CGFloat infoH = 58;
+
+	CGRect art, info, panel;
+	if (!landscape) {
+		CGFloat side = MIN(b.width - 40, b.height - panelH - infoH - 18);
+		side = MAX(side, 80);
+		CGFloat top = MAX(10, floor((b.height - panelH - infoH - side) / 2) - 2);
+		art = CGRectMake(floor((b.width - side) / 2), top, side, side);
+		info = CGRectMake(0, CGRectGetMaxY(art) + 4, b.width, infoH);
+		panel = CGRectMake(0, b.height - panelH, b.width, panelH);
+	} else {
+		CGFloat side = b.height - 20;
+		art = CGRectMake(12, 10, side, side);
+		CGFloat rx = CGRectGetMaxX(art) + 8;
+		panel = CGRectMake(rx, b.height - panelH, b.width - rx, panelH);
+		info = CGRectMake(rx, MAX(4, (b.height - panelH - infoH) / 2), b.width - rx, infoH);
+	}
+	self.artContainer.frame = art;
+	self.artView.frame = self.artContainer.bounds;
+	self.queueTable.frame = self.artContainer.bounds;
+	self.artContainer.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.artContainer.bounds].CGPath;
+
+	self.stationLabel.frame = CGRectMake(info.origin.x + 44, info.origin.y, info.size.width - 88, 14);
+	self.titleLabel.frame = CGRectMake(info.origin.x + 44, info.origin.y + 15, info.size.width - 88, 22);
+	self.artistLabel.frame = CGRectMake(info.origin.x + 44, info.origin.y + 37, info.size.width - 88, 18);
+	self.likeButton.center = CGPointMake(CGRectGetMaxX(info) - 26, info.origin.y + 30);
+
+	if (!CGSizeEqualToSize(self.panel.frame.size, panel.size))
+		self.panel.image = [[YMTheme current] panelImageWithSize:panel.size];
+	self.panel.frame = panel;
+	CGFloat w = panel.size.width;
+	self.elapsedLabel.frame = CGRectMake(4, 14, 44, 16);
+	self.remainingLabel.frame = CGRectMake(w - 48, 14, 44, 16);
+	self.scrubber.frame = CGRectMake(50, 10, w - 100, 24);
+
+	CGFloat row = 66;
+	self.playButton.center = CGPointMake(w / 2, row);
+	self.prevButton.center = CGPointMake(w / 2 - 70, row);
+	self.nextButton.center = CGPointMake(w / 2 + 70, row);
+	self.shuffleButton.center = CGPointMake(MAX(26, w / 2 - 130), row);
+	self.repeatButton.center = CGPointMake(MIN(w - 26, w / 2 + 130), row);
+	self.volume.frame = CGRectMake(24, panel.size.height - 30, w - 48, 24);
 }
 
--(void)reloadData{
-	[self filterData];
-	[self.refreshControl endRefreshing];
+#pragma mark - state
+
+- (void)refreshTrack
+{
+	YMTheme *t = [YMTheme current];
+	PlayerController *player = self.appDelegate.player;
+	Item *item = player.nowPlaying;
+	self.current = item;
+	if (!item) {
+		self.titleLabel.text = @"Ничего не играет";
+		self.artistLabel.text = @"Включите Мою волну на главной";
+		self.stationLabel.text = nil;
+		self.artView.image = [t coverPlaceholderWithSize:CGSizeMake(280, 280)];
+		self.likeButton.hidden = YES;
+		return;
+	}
+	self.likeButton.hidden = NO;
+	self.titleLabel.text = item.title;
+	self.artistLabel.text = item.albumTitle.length
+		? [NSString stringWithFormat:@"%@ — %@", item.subtitle, item.albumTitle] : item.subtitle;
+	self.stationLabel.text = [player.station isEqualToString:YMStationMyWave] ? @"МОЯ ВОЛНА" :
+		(player.playlist.count > 1 ? [NSString stringWithFormat:@"%d ИЗ %d",
+		                              (int)player.current + 1, (int)player.playlist.count] : nil);
+	[self showArtFor:item];
+	[self checkTrackIsLiked:item];
 }
 
--(void)refresh:(id)sender{
-	[self reloadData];
+- (void)showArtFor:(Item *)item
+{
+	YMTheme *t = [YMTheme current];
+	UIImage *image = item.artImage ? item.artImage : item.coverImage;
+	if (!image)
+		image = [t coverPlaceholderWithSize:CGSizeMake(280, 280)];
+	if (image != self.artView.image) {
+		[UIView transitionWithView:self.artView duration:0.25
+		                   options:UIViewAnimationOptionTransitionCrossDissolve
+		                animations:^{ self.artView.image = image; } completion:nil];
+	}
+}
+
+- (void)refreshControls
+{
+	YMTheme *t = [YMTheme current];
+	PlayerController *player = self.appDelegate.player;
+	BOOL playing = player.nowPlaying && player.playbackState == MPMoviePlaybackStatePlaying;
+	YMGlyph g = playing ? YMGlyphPause : YMGlyphPlay;
+	[self.playButton setImage:[t roundButtonWithDiameter:58 glyph:g accent:YES pressed:NO] forState:UIControlStateNormal];
+	[self.playButton setImage:[t roundButtonWithDiameter:58 glyph:g accent:YES pressed:YES] forState:UIControlStateHighlighted];
+
+	UIColor *on = (t.kind == YMThemeYandex) ? YMRGB(220, 160, 0) : (t.leather ? t.panelGlyph : t.accent);
+	UIColor *off = [t.panelGlyph colorWithAlphaComponent:0.4];
+	UIColor *shadow = (t.kind == YMThemeClassic || t.kind == YMThemeYandex) ? YMRGBA(255, 255, 255, 0.8) : YMRGBA(0, 0, 0, 0.7);
+	CGSize offset = CGSizeMake(0, (t.kind == YMThemeClassic || t.kind == YMThemeYandex) ? 1 : -1);
+
+	BOOL station = player.station != nil;
+	self.shuffleButton.enabled = !station;
+	self.repeatButton.enabled = !station;
+	UIColor *sc = (player.shuffle && !station) ? on : off;
+	[self.shuffleButton setImage:[YMDraw glyph:YMGlyphShuffle size:22 top:sc bottom:sc shadow:shadow offset:offset]
+	                    forState:UIControlStateNormal];
+	YMGlyph rg = (player.queueRepeat == YMRepeatOne) ? YMGlyphRepeatOne : YMGlyphRepeat;
+	UIColor *rc = (player.queueRepeat != YMRepeatOff && !station) ? on : off;
+	[self.repeatButton setImage:[YMDraw glyph:rg size:22 top:rc bottom:rc shadow:shadow offset:offset]
+	                   forState:UIControlStateNormal];
+	self.shuffleButton.alpha = station ? 0.4 : 1;
+	self.repeatButton.alpha = station ? 0.4 : 1;
+}
+
+- (void)tick:(NSTimer *)timer
+{
+	PlayerController *player = self.appDelegate.player;
+	NSTimeInterval duration = player.nowPlaying ? player.duration : 0;
+	NSTimeInterval position = player.nowPlaying ? player.currentPlaybackTime : 0;
+	if (isnan(duration) || duration <= 0) duration = 0;
+	if (isnan(position) || position < 0) position = 0;
+	self.scrubber.enabled = duration > 0;
+	if (!self.scrubbing) {
+		self.scrubber.value = duration > 0 ? position / duration : 0;
+		self.elapsedLabel.text = [YMDraw formatTime:position];
+		self.remainingLabel.text = [@"-" stringByAppendingString:[YMDraw formatTime:duration - position]];
+	}
+}
+
+- (void)trackDidChange:(NSNotification *)n
+{
+	[self refreshTrack];
+	[self refreshControls];
+	[self.queueTable reloadData];
+	[self scrollQueueToCurrent];
+}
+
+- (void)stateDidChange:(NSNotification *)n
+{
+	[self refreshControls];
+}
+
+- (void)queueDidChange:(NSNotification *)n
+{
+	[self.queueTable reloadData];
+	[self refreshControls];
+	if (self.current)
+		[self refreshTrack];
+}
+
+- (void)artDidLoad:(NSNotification *)n
+{
+	if (n.object == self.current)
+		[self showArtFor:self.current];
+}
+
+#pragma mark - actions
+
+- (void)playPause:(id)sender { [self.appDelegate.player togglePlayPause]; [self refreshControls]; }
+- (void)next:(id)sender { [self.appDelegate.player next]; }
+- (void)prev:(id)sender { [self.appDelegate.player prev]; [self tick:nil]; }
+
+- (void)toggleShuffle:(id)sender
+{
+	PlayerController *player = self.appDelegate.player;
+	player.shuffle = !player.shuffle;
+	[self refreshControls];
+}
+
+- (void)toggleRepeat:(id)sender
+{
+	PlayerController *player = self.appDelegate.player;
+	player.queueRepeat = (YMRepeatMode)((player.queueRepeat + 1) % 3);
+	[self refreshControls];
+}
+
+- (void)scrubStart:(UISlider *)s { self.scrubbing = YES; }
+
+- (void)scrubMove:(UISlider *)s
+{
+	NSTimeInterval duration = self.appDelegate.player.duration;
+	if (isnan(duration) || duration <= 0) return;
+	self.elapsedLabel.text = [YMDraw formatTime:s.value * duration];
+	self.remainingLabel.text = [@"-" stringByAppendingString:[YMDraw formatTime:(1 - s.value) * duration]];
+}
+
+- (void)scrubEnd:(UISlider *)s
+{
+	NSTimeInterval duration = self.appDelegate.player.duration;
+	if (!isnan(duration) && duration > 0)
+		self.appDelegate.player.currentPlaybackTime = s.value * duration;
+	self.scrubbing = NO;
+}
+
+/* Flip the artwork over to the queue, like the iPod. */
+- (void)flip:(id)sender
+{
+	UIView *from = self.showingQueue ? self.queueTable : self.artView;
+	UIView *to = self.showingQueue ? self.artView : self.queueTable;
+	UIViewAnimationOptions dir = self.showingQueue ? UIViewAnimationOptionTransitionFlipFromLeft : UIViewAnimationOptionTransitionFlipFromRight;
+	to.frame = self.artContainer.bounds;
+	if (!self.showingQueue) {
+		[self.queueTable reloadData];
+		[self scrollQueueToCurrent];
+	}
+	[UIView transitionFromView:from toView:to duration:0.6
+	                   options:dir | UIViewAnimationOptionCurveEaseInOut completion:nil];
+	self.showingQueue = !self.showingQueue;
+}
+
+- (void)scrollQueueToCurrent
+{
+	NSInteger current = self.appDelegate.player.current;
+	if (current >= 0 && current < [self.queueTable numberOfRowsInSection:0])
+		[self.queueTable scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:current inSection:0]
+		                       atScrollPosition:UITableViewScrollPositionMiddle animated:NO];
+}
+
+#pragma mark - like
+
+- (void)setLikeImage
+{
+	YMTheme *t = [YMTheme current];
+	UIColor *c = self.liked ? (t.kind == YMThemeYandex ? YMRGB(240, 60, 60) : (t.leather ? t.accentDark : t.accent))
+	                        : [t.subtext colorWithAlphaComponent:0.8];
+	UIColor *shadow = (t.kind == YMThemeYandexDark) ? YMRGBA(0, 0, 0, 0.9) : YMRGBA(255, 255, 255, 0.8);
+	[self.likeButton setImage:[YMDraw glyph:self.liked ? YMGlyphHeartFilled : YMGlyphHeart size:24
+	                                    top:c bottom:c shadow:shadow offset:CGSizeMake(0, 1)]
+	                 forState:UIControlStateNormal];
 }
 
 -(void)checkTrackIsLiked:(Item *)track{
@@ -145,241 +446,125 @@
 			break;
 		}
 	}
-
-	if (self.liked){
-		[self.like setImage:[UIImage imageNamed:@"heart_fill"]];	
-	} 
-	else{
-		[self.like setImage:[UIImage imageNamed:@"heart"]];	
-	}
+	[self setLikeImage];
 }
 
-void like_callback(void *data, const char *error){
-	PlayerViewController *self = (__bridge PlayerViewController *)data;
-	if (error){
-		NSLog(@"%s", error);
+static void like_callback(void *data, const char *error){
+	if (!error)
 		return;
-	}
+	NSLog(@"%s", error);
+	PlayerViewController *self = (__bridge PlayerViewController *)data;
 	dispatch_async(dispatch_get_main_queue(), ^{
-		self.liked = !self.liked;
-		[self.like setImage:[UIImage imageNamed:(self.liked ? @"heart_fill" : @"heart")]];
+		/* the request failed: undo the optimistic change */
+		[self checkTrackIsLiked:self.current];
 	});
 }
 
--(void)shareIsPushed:(id)sender{
-	UIActionSheet *as = [[UIActionSheet alloc]
-			initWithTitle:nil 
-					 delegate:self 
-					 cancelButtonTitle:@"отмена" 
-					 destructiveButtonTitle:nil 
-					 otherButtonTitles:
-													@"сохранить плейлист", nil];
-	//[as showInView:self.view];
-	[as showFromToolbar:self.navigationController.toolbar];
-}
-
 -(void)likeIsPushed:(id)sender{
-	if (self.appDelegate.player.current < 0)
+	Item *item = self.current;
+	if (!item || !self.token)
 		return;
-	if (!self.token)
+	NSInteger uid = [[NSUserDefaults standardUserDefaults] integerForKey:@"uid"];
+	if (!uid)
 		return;
-	
-	NSInteger uid = 
-			[[NSUserDefaults standardUserDefaults]integerForKey:@"uid"];
-		if (!uid)
-			return;
 
-		if (self.liked){
-			[self.like setImage:[UIImage imageNamed:@"heart"]];	
-			[self.doLike cancelAllOperations];
-			[self.doLike addOperationWithBlock:^{
-					c_yandex_music_set_unlike_current(
-							[self.token UTF8String], 
-							uid, [self.current.itemId UTF8String], 
-							(__bridge void *)self, like_callback);
-			}];
-		}
-		else {
-			[self.doLike cancelAllOperations];
-			[self.doLike addOperationWithBlock:^{
-			[self.like setImage:[UIImage imageNamed:@"heart_fill"]];	
-					c_yandex_music_set_like_current(
-							[self.token UTF8String], 
-							uid, [self.current.itemId UTF8String], 
-							(__bridge void *)self, like_callback);
-			}];
-		} 
+	BOOL like = !self.liked;
+	NSMutableArray *liked = self.appDelegate.likedTracks;
+	if (like) {
+		[liked insertObject:item atIndex:0];
+	} else {
+		NSIndexSet *matches = [liked indexesOfObjectsPassingTest:^BOOL(Item *obj, NSUInteger idx, BOOL *stop) {
+			return [obj.itemId isEqual:item.itemId];
+		}];
+		[liked removeObjectsAtIndexes:matches];
+	}
+	self.liked = like;
+	[self setLikeImage];
+	[UIView animateWithDuration:0.12 animations:^{
+		self.likeButton.transform = CGAffineTransformMakeScale(1.35, 1.35);
+	} completion:^(BOOL finished) {
+		[UIView animateWithDuration:0.15 animations:^{ self.likeButton.transform = CGAffineTransformIdentity; }];
+	}];
+
+	NSString *token = [self.token copy];
+	NSString *itemId = [item.itemId copy];
+	[self.doLike addOperationWithBlock:^{
+		if (like)
+			c_yandex_music_set_like_current([token UTF8String], uid, [itemId UTF8String],
+					(__bridge void *)self, like_callback);
+		else
+			c_yandex_music_set_unlike_current([token UTF8String], uid, [itemId UTF8String],
+					(__bridge void *)self, like_callback);
+	}];
 }
 
-#pragma mark <PlayerControllerDelegate Meythods>
+#pragma mark - PlayerControllerDelegate
+
 -(void)playerControllerStartPlayTrack:(Item *)track{
-	self.current = track;
-	[self checkTrackIsLiked:track];
-	[self.label setText:track.title];
-	[self.subLabel setText:track.subtitle];
+	/* handled by YMPlayerTrackDidChangeNotification */
 }
 
-#pragma mark <TableViewDelegate Meythods>
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 1;
-}
+#pragma mark - queue table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return self.data.count;
+	return self.appDelegate.player.playlist.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	Item *item = [self.data objectAtIndex:indexPath.item];
-	UITableViewCell *cell = nil;
-	if (self.appDelegate.player.nowPlaying && self.appDelegate.player.playing == indexPath.item)
-	{
-		cell = [self.tableView dequeueReusableCellWithIdentifier:@"player"];
-		if (cell == nil){
-			cell = [[UITableViewCell alloc]
-			initWithStyle: UITableViewCellStyleSubtitle 
-			reuseIdentifier: @"player"];
-		}
-		[self.appDelegate.player.view removeFromSuperview];
-		[self.appDelegate.player setControlStyle:MPMovieControlStyleEmbedded];
-		[self.appDelegate.player.view setFrame:cell.contentView.frame];
-		[self.appDelegate.player setScalingMode:MPMovieScalingModeAspectFill];
-		[cell.contentView addSubview:self.appDelegate.player.view];
-	} else {
-		cell = [self.tableView dequeueReusableCellWithIdentifier:@"cell"];
-		if (cell == nil){
-			cell = [[UITableViewCell alloc]
-			initWithStyle: UITableViewCellStyleSubtitle 
-			reuseIdentifier: @"cell"];
-		}
-		item.imageView = cell.imageView;
-		[cell.textLabel setText:item.title];
-		[cell.detailTextLabel setText:item.subtitle];	
-		if (item.coverImage)
-			[cell.imageView setImage:item.coverImage];
-		
-	}
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"queue"];
+	if (!cell)
+		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"queue"];
+	NSArray *playlist = self.appDelegate.player.playlist;
+	if (indexPath.row >= (NSInteger)playlist.count)
+		return cell;
+	Item *item = [playlist objectAtIndex:indexPath.row];
+	cell.textLabel.text = item.title;
+	cell.detailTextLabel.text = item.subtitle;
+	BOOL now = (indexPath.row == self.appDelegate.player.current) && self.appDelegate.player.nowPlaying;
+	YMTheme *t = [YMTheme current];
+	cell.accessoryView = now ? [[UIImageView alloc] initWithImage:
+		[YMDraw glyph:YMGlyphNote size:16 color:(t.kind == YMThemeYandex ? YMRGB(220, 160, 0) : t.accent)]] : nil;
 	return cell;
 }
 
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
-	__block UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-	cell.accessoryView = spinner; 
-	[spinner startAnimating];
-
-	self.appDelegate.player.current = indexPath.item;
-	[self.appDelegate.player playCurrent:^{
-		[spinner stopAnimating];
-		[spinner removeFromSuperview];
-		[cell setAccessoryView:nil];
-		[self refresh:nil];
-	}];
-	//self.selected = [self.data objectAtIndex:indexPath.item];
-	//UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
-		//UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
-		//[spinner startAnimating];
-		//ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected onDone:^{
-			//[spinner stopAnimating];
-		//}];
-		//[as showInView:tableView];
-		
-		// unselect row
-	[tableView deselectRowAtIndexPath:indexPath animated:true];
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[[YMTheme current] styleCell:cell];
+	cell.textLabel.font = [UIFont boldSystemFontOfSize:14];
+	cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
 }
-- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
-	// hide keyboard
-	[self.searchBar resignFirstResponder];
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle];
+	cell.accessoryView = spinner;
+	[spinner startAnimating];
+	[self.appDelegate.player playIndex:indexPath.row onDone:^{
+		[spinner stopAnimating];
+		[tableView reloadData];
+	}];
 }
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-	return true;
+	return indexPath.row != self.appDelegate.player.current;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (editingStyle == UITableViewCellEditingStyleDelete){
-		self.selected = [self.data objectAtIndex:indexPath.item];
-			UIAlertView *alert = 
-				[[UIAlertView alloc]initWithTitle:@"Удалить трек из листа?" 
-				message:self.selected.title 
-				delegate:self 
-				cancelButtonTitle:@"Отмена" 
-				otherButtonTitles:@"Удалить", nil];
-			[alert show];
+	if (editingStyle != UITableViewCellEditingStyleDelete)
+		return;
+	PlayerController *player = self.appDelegate.player;
+	if (indexPath.row >= (NSInteger)player.playlist.count || indexPath.row == player.current)
+		return;
+	[player.playlist removeObjectAtIndex:indexPath.row];
+	if (indexPath.row < player.current) {
+		player.current--;
+		player.playing = player.current;
 	}
+	[tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
 }
 
-#pragma mark <ACTION SHEET DELEGATE>
-- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
-	switch (buttonIndex){
-		case 0: 
-			{
-				//TextEditViewController *vc = [[TextEditViewController alloc]init];
-				//vc.delegate = self;
-				//vc.title = @"Название";
-				//[self.navigationController pushViewController:vc animated:YES];
-				break;
-			}
-	
-		default:
-			{
-				break;
-			} 
-	}
-}
-
--(void)textEditViewControllerSaveText:(NSString *)text{
-    if (!self.token || !text || ![text length]) return;
-
-    NSString *token = [self.token copy];
-    NSString *title = [text copy];
-    NSInteger uid = [[NSUserDefaults standardUserDefaults] integerForKey:@"uid"];
-    if (!uid) return;
-
-    NSArray *playlistItems = [self.appDelegate.player.playlist copy];
-    [self.doLike addOperationWithBlock:^{
-        playlist_t *p = c_yandex_music_create_playlist(
-            [token UTF8String], uid, [title UTF8String], NULL, NULL);
-        if (!p) return;
-
-        int count = (int)[playlistItems count];
-        if (count > 0) {
-            long *track_ids = calloc((size_t)count, sizeof(long));
-            long *album_ids = calloc((size_t)count, sizeof(long));
-            if (track_ids && album_ids) {
-                for (int i = 0; i < count; ++i) {
-                    Item *item = [playlistItems objectAtIndex:i];
-                    track_ids[i] = (long)[item.itemId longLongValue];
-                    album_ids[i] = item.albumId;
-                }
-                c_yandex_music_playlist_add_tracks(
-                    [token UTF8String], uid, p->kind,
-                    track_ids, album_ids, count, NULL, NULL);
-            }
-            if (track_ids) free(track_ids);
-            if (album_ids) free(album_ids);
-        }
-        c_yandex_music_playlist_free(p);
-    }];
-}
-#pragma mark <ALERT DELEGATE FUNCTIONS>
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-	if (buttonIndex == 1){
-		[self.loadedData removeObject:self.selected];
-		[self filterData];
-	}
-}
-#pragma mark <SEARCHBAR FUNCTIONS>
-
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText{
-	[self filterData];
-}
-
--(void)searchBarTextDidEndEditing:(UISearchBar *)searchBar
-{
-	[self.searchBar resignFirstResponder];
-}
-- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
-	[searchBar resignFirstResponder];
+- (NSString *)tableView:(UITableView *)tableView titleForDeleteConfirmationButtonForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return @"Убрать";
 }
 
 @end

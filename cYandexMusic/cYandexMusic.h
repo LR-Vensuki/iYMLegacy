@@ -212,6 +212,32 @@ int c_yandex_music_playlist_add_tracks(
 				(void *user_data,
 				 const char *error));
 
+/* fetch the next batch of a rotor station ("user:onyourwave" is My Wave).
+ * %queue_track_id is the last track already queued, NULL for the first batch.
+ * Return 0 on success or -1 on error */
+int c_yandex_music_get_station_tracks(
+		const char *token,
+		const char *station,
+		const char *queue_track_id,
+		const char *image_size,	 // NULL - for original
+		void *user_data,
+		int (*callback)          // callback for each track
+		                         // return non-zero to stop function
+				(void *user_data,
+				 const char *batch_id,
+				 track_t * track,
+				 const char *error));
+
+/* send rotor feedback: "radioStarted", "trackStarted", "trackFinished"
+ * or "skip". %track_id is "trackId:albumId" (NULL for radioStarted). */
+int c_yandex_music_rotor_feedback(
+		const char *token,
+		const char *station,
+		const char *batch_id,
+		const char *type,
+		const char *track_id,
+		double total_played_seconds);
+
 #ifdef __cplusplus
 }  /* end of the 'extern "C"' block */
 #endif

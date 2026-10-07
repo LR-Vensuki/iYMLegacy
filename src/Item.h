@@ -38,6 +38,9 @@ typedef enum {
 #define kArtImageURL    @"artImageURL"
 #define kHasArtImage    @"hasArtImage"
 
+extern NSString * const YMItemCoverDidLoadNotification;
+extern NSString * const YMItemArtDidLoadNotification;
+
 @interface Item : NSObject
 <NSURLConnectionDelegate, NSCoding>
 @property (strong) NSString *thumbmailsCache;

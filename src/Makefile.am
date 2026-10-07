@@ -9,10 +9,17 @@ iYMLegacy_SOURCES = \
 		../cYandexMusic/uuid4.c \
 		../cYandexMusic/cJSON.c \
 		../cYandexMusic/ezxml.c \
+		../cYandexMusic/md5.c \
+		../qrcodegen/qrcodegen.c \
 		AppDelegate.m \
 		Item.m \
 		RootViewController.m \
-		FeedViewController.m \
+		HomeViewController.m \
+		ThemesViewController.m \
+		YMCoverFlowView.m \
+		YMDraw.m \
+		YMQRView.m \
+		YMTheme.m \
 		FavoritesViewController.m \
 		SearchViewController.m \
 		SearchViewControllerDetail.m \
@@ -37,7 +44,8 @@ iYMLegacy_LDFLAGS = \
 			-framework AVFoundation \
 			-framework Foundation \
 			-framework QuickLook \
-			-framework CoreGraphics
+			-framework CoreGraphics \
+			-framework QuartzCore
 
 iYMLegacy_LDADD = \
 									-lssl -lcurl -L../libs

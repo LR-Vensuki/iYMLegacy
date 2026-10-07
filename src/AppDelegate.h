@@ -18,6 +18,7 @@
 @property (strong) NSMutableArray *likedTracks;
 -(void)playButtonPushed:(id)sender;
 -(void)showMessage:(NSString *)msg;
+-(void)rebuildInterface;
 
 @end
 

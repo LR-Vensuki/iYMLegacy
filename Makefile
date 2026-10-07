@@ -18,7 +18,9 @@ iYMLegacy_FILES = \
     src/AppDelegate.m \
     src/RootViewController.m \
     src/Item.m \
-    src/FeedViewController.m \
+    src/HomeViewController.m \
+    src/ThemesViewController.m \
+    src/YMCoverFlowView.m \
     src/FavoritesViewController.m \
     src/SearchViewController.m \
     src/SearchViewControllerDetail.m \
@@ -30,6 +32,10 @@ iYMLegacy_FILES = \
     src/PlaylistsViewController.m \
     src/TextEditViewController.m \
     src/ActionSheet.m \
+    src/YMDraw.m \
+    src/YMTheme.m \
+    src/YMQRView.m \
+    qrcodegen/qrcodegen.c \
     cYandexMusic/cYandexOAuth.c \
     cYandexMusic/cYandexMusic.c \
     cYandexMusic/md5.c \
@@ -44,6 +50,7 @@ iYMLegacy_CFLAGS = \
     -fobjc-arc \
     -I$(THEOS_PROJECT_DIR)/src \
     -I$(THEOS_PROJECT_DIR)/cYandexMusic \
+    -I$(THEOS_PROJECT_DIR)/qrcodegen \
     -Wno-deprecated-declarations \
     -Wno-gnu-statement-expression
 
@@ -55,6 +62,7 @@ iYMLegacy_FRAMEWORKS = \
     UIKit \
     Foundation \
     CoreGraphics \
+    QuartzCore \
     CoreMedia \
     AVFoundation \
     MediaPlayer \

@@ -14,6 +14,8 @@
 #include "RootViewController.h"
 #import "PlayerController.h"
 #import "PlayerViewController.h"
+#import "ThemesViewController.h"
+#import "YMTheme.h"
 
 @implementation AppDelegate
 
@@ -25,11 +27,16 @@
 	[[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
 	self.player = [[PlayerController alloc]init];
 
+	[[YMTheme current] applyAppearance];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(themeDidChange:)
+			name:YMThemeDidChangeNotification object:nil];
+
 	self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];	
 	RootViewController *vc = 
 			[[RootViewController alloc]init];
 	[self.window setRootViewController:vc];
 	[self.window makeKeyAndVisible];
+	[self attachPlayerView];
 	[YandexConnect refreshSavedTokenIfNeeded];
 	return true;
 }
@@ -39,10 +46,7 @@
 		switch (event.subtype) {
 			case UIEventSubtypeRemoteControlTogglePlayPause:
 					// Pause or play action
-					if (self.player.currentPlaybackRate != 0)
-						[self.player pause];
-					else
-						[self.player play];
+					[self.player togglePlayPause];
 					break;
 			case UIEventSubtypeRemoteControlNextTrack:
 					// Next track action
@@ -72,6 +76,51 @@
 	}
 }
 
+/* The movie player only plays audio here, but keep its view in the
+ * window (invisible) so playback is never tied to a screen's lifetime. */
+-(void)attachPlayerView{
+	UIView *v = self.player.view;
+	[v removeFromSuperview];
+	v.frame = CGRectMake(0, 0, 1, 1);
+	v.alpha = 0;
+	v.userInteractionEnabled = NO;
+	[self.player setControlStyle:MPMovieControlStyleNone];
+	[self.window addSubview:v];
+	[self.window sendSubviewToBack:v];
+}
+
+/* UIAppearance only affects views created afterwards, so a new theme
+ * means building the interface again, on the same tab. */
+-(void)rebuildInterface{
+	UITabBarController *old = (UITabBarController *)self.window.rootViewController;
+	NSUInteger tab = [old isKindOfClass:[UITabBarController class]] ? old.selectedIndex : 0;
+	BOOL inThemes = NO;
+	if ([old isKindOfClass:[UITabBarController class]]) {
+		UINavigationController *nc = (UINavigationController *)old.selectedViewController;
+		if ([nc isKindOfClass:[UINavigationController class]])
+			inThemes = [nc.topViewController isKindOfClass:[ThemesViewController class]];
+	}
+	RootViewController *vc = [[RootViewController alloc] init];
+	[UIView transitionWithView:self.window duration:0.4
+			options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionAllowAnimatedContent
+			animations:^{
+				BOOL enabled = [UIView areAnimationsEnabled];
+				[UIView setAnimationsEnabled:NO];
+				[self.window setRootViewController:vc];
+				vc.selectedIndex = tab;
+				if (inThemes) {
+					UINavigationController *nc = (UINavigationController *)vc.selectedViewController;
+					[nc pushViewController:[[ThemesViewController alloc] init] animated:NO];
+				}
+				[UIView setAnimationsEnabled:enabled];
+			} completion:nil];
+	[self attachPlayerView];
+}
+
+-(void)themeDidChange:(NSNotification *)notification{
+	[self rebuildInterface];
+}
+
 -(void)playButtonPushed:(id)sender{
 	PlayerViewController *vc = [[PlayerViewController alloc]init];
 	UINavigationController *nc = [[UINavigationController alloc]initWithRootViewController:vc];
@@ -79,6 +128,7 @@
 }
 
 -(void)showMessage:(NSString *)msg {
+	if (!msg.length) return;
 	UIAlertView *alert = 
 			[[UIAlertView alloc]initWithTitle:@"" 
 			message:msg 

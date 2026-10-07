@@ -5,6 +5,7 @@
  * Last Modified Date: 13.09.2023
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
  */
+#import "YMTheme.h"
 #import "SearchViewControllerDetail.h"
 #include "Item.h"
 #import "TrackListViewController.h"
@@ -28,6 +29,7 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	[[YMTheme current] styleController:self];
 	
 	// play button
 	//UIBarButtonItem *playButtonItem = 
@@ -117,6 +119,10 @@
 	[as showFromTabBar:self.tabBarController.tabBar];
 }
 
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[[YMTheme current] styleCell:cell];
+}
 
 @end
 // vim:ft=objc

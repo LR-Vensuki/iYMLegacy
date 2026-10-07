@@ -15,6 +15,10 @@
 #include "../cYandexMusic/cYandexMusic.h"
 #import "AppDelegate.h"
 
+NSString * const YMPlayerTrackDidChangeNotification = @"YMPlayerTrackDidChangeNotification";
+NSString * const YMPlayerStateDidChangeNotification = @"YMPlayerStateDidChangeNotification";
+NSString * const YMPlayerQueueDidChangeNotification = @"YMPlayerQueueDidChangeNotification";
+
 @implementation PlayerController
 - (id)init
 {
@@ -22,7 +26,7 @@
 		self.appDelegate = [[UIApplication sharedApplication]delegate];
 		self.playlist = [NSMutableArray array];		
 		self.current = -1;
-		self.repeat = false;
+		self.queueRepeat = YMRepeatOff;
 		[self setUseApplicationAudioSession:FALSE];
 		[self setupPlayBackAudioSession];
 		//[self setMovieSourceType:MPMovieSourceTypeStreaming];
@@ -118,6 +122,8 @@ void post_error(void *data, const char *error){
 	[self setPlaying:self.current];
 	if (self.delegate)
 		[self.delegate playerControllerStartPlayTrack:item];
+	[[NSNotificationCenter defaultCenter] postNotificationName:YMPlayerTrackDidChangeNotification object:self];
+	[self stationTrackStarted:item];
 
 	// download current and next items after 10 sec
 	if (self.downloadPlaylist){
@@ -191,6 +197,7 @@ void post_error(void *data, const char *error){
 
 -(void)addToLast:(Item *)item {
 	if (item) [self.playlist addObject:item];
+	[self queueChanged];
 }
 
 -(void)addAfterCurrent:(Item *)item{
@@ -198,29 +205,246 @@ void post_error(void *data, const char *error){
 	NSUInteger index = (self.current < 0) ? self.playlist.count : (NSUInteger)(self.current + 1);
 	if (index > self.playlist.count) index = self.playlist.count;
 	[self.playlist insertObject:item atIndex:index];
+	[self queueChanged];
 }
 
 -(void)addToTopAndPlay:(Item *)item onDone:(void (^)())onDone{
 	if (!item) { if (onDone) onDone(); return; }
+	self.station = nil;
 	if (self.current < 0) self.current = 0;
 	if (self.current > (NSInteger)self.playlist.count) self.current = self.playlist.count;
 	[self.playlist insertObject:item atIndex:self.current];
 	[self playCurrent:onDone];
 }
 
+-(void)queueChanged{
+	[[NSNotificationCenter defaultCenter] postNotificationName:YMPlayerQueueDidChangeNotification object:self];
+}
+
+-(void)playIndex:(NSInteger)index onDone:(void (^)())onDone{
+	if (index < 0 || index >= (NSInteger)self.playlist.count) {
+		if (onDone) onDone();
+		return;
+	}
+	self.current = index;
+	[self playCurrent:onDone];
+	[self fetchStationIfNeeded];
+}
+
+-(void)playItems:(NSArray *)items startingAt:(NSInteger)index onDone:(void (^)())onDone{
+	self.station = nil;
+	self.unshuffled = nil;
+	_shuffle = NO;
+	[self.playlist setArray:items];
+	[self queueChanged];
+	[self playIndex:index onDone:onDone];
+}
+
+/* Skip by the user: tell the station, then move on. */
 -(void)next{
-	self.current++;
-	if (self.current >= self.playlist.count && self.repeat)
-		self.current = 0;
-	if (self.current < self.playlist.count)
-		[self playCurrent:NULL];
+	if (self.station && self.nowPlaying)
+		[self stationFeedback:@"skip" item:self.nowPlaying played:self.currentPlaybackTime];
+	[self advance];
+}
+
+-(void)advance{
+	if (self.current + 1 >= (NSInteger)self.playlist.count) {
+		if (self.queueRepeat == YMRepeatAll && !self.station && self.playlist.count) {
+			[self playIndex:0 onDone:NULL];
+		} else if (self.station) {
+			/* wait for the next batch; fetchStationIfNeeded plays it */
+			self.current = self.playlist.count - 1;
+			[self fetchStationIfNeeded];
+		}
+		return;
+	}
+	[self playIndex:self.current + 1 onDone:NULL];
 }
 
 -(void)prev{
-	self.current--;
-	if (self.current < 0)
-		self.current = 0;
-	[self playCurrent:NULL];
+	/* like the iPod: restart the track unless it has only just begun */
+	if (self.nowPlaying && self.currentPlaybackTime > 3) {
+		self.currentPlaybackTime = 0;
+		return;
+	}
+	NSInteger index = self.current - 1;
+	if (index < 0)
+		index = (self.queueRepeat == YMRepeatAll) ? (NSInteger)self.playlist.count - 1 : 0;
+	[self playIndex:index onDone:NULL];
+}
+
+-(void)togglePlayPause{
+	if (!self.nowPlaying) {
+		if (self.playlist.count)
+			[self playIndex:MAX(self.current, 0) onDone:NULL];
+		return;
+	}
+	if (self.playbackState == MPMoviePlaybackStatePlaying)
+		[self pause];
+	else
+		[self play];
+}
+
+#pragma mark <Shuffle>
+
+-(void)setShuffle:(BOOL)shuffle{
+	if (_shuffle == shuffle)
+		return;
+	_shuffle = shuffle;
+	Item *now = (self.current >= 0 && self.current < (NSInteger)self.playlist.count)
+		? [self.playlist objectAtIndex:self.current] : nil;
+	if (shuffle) {
+		self.unshuffled = [self.playlist copy];
+		/* keep what has been played, shuffle what is still to come */
+		NSUInteger start = now ? (NSUInteger)self.current + 1 : 0;
+		for (NSUInteger i = self.playlist.count; i > start + 1; --i) {
+			NSUInteger j = start + arc4random_uniform((u_int32_t)(i - start));
+			[self.playlist exchangeObjectAtIndex:i - 1 withObjectAtIndex:j];
+		}
+	} else if (self.unshuffled) {
+		NSMutableArray *restored = [NSMutableArray arrayWithArray:self.unshuffled];
+		for (Item *item in self.playlist)
+			if (![restored containsObject:item])
+				[restored addObject:item];
+		[restored filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id obj, NSDictionary *b) {
+			return [self.playlist containsObject:obj];
+		}]];
+		[self.playlist setArray:restored];
+		self.unshuffled = nil;
+		if (now) {
+			self.current = [self.playlist indexOfObject:now];
+			self.playing = self.current;
+		}
+	}
+	[self queueChanged];
+}
+
+#pragma mark <Stations>
+
+-(void)startStation:(NSString *)station onDone:(void (^)(NSString *error))onDone{
+	NSString *token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	if (!token) {
+		if (onDone) onDone(@"Нужно войти в аккаунт");
+		return;
+	}
+	[self stop];
+	[self.playlist removeAllObjects];
+	self.unshuffled = nil;
+	_shuffle = NO;
+	self.current = -1;
+	self.nowPlaying = nil;
+	self.station = station;
+	self.stationBatch = nil;
+	[self queueChanged];
+	[self loadStationBatch:^(NSString *error) {
+		if (!error) {
+			[self stationFeedback:@"radioStarted" item:nil played:0];
+			[self playIndex:0 onDone:^{
+				if (onDone) onDone(nil);
+			}];
+		} else if (onDone) {
+			onDone(error);
+		}
+	}];
+}
+
+static int station_track(void *data, const char *batch_id, track_t *track, const char *error){
+	NSMutableDictionary *ctx = (__bridge NSMutableDictionary *)data;
+	if (error) {
+		[ctx setObject:[NSString stringWithUTF8String:error] forKey:@"error"];
+		return 0;
+	}
+	if (batch_id && ![ctx objectForKey:@"batch"])
+		[ctx setObject:[NSString stringWithUTF8String:batch_id] forKey:@"batch"];
+	if (track) {
+		Item *item = [[Item alloc] initWithTrack:track token:[ctx objectForKey:@"token"]];
+		if (item.itemId)
+			[[ctx objectForKey:@"items"] addObject:item];
+	}
+	return 0;
+}
+
+-(void)loadStationBatch:(void (^)(NSString *error))onDone{
+	if (self.loadingStation || !self.station) {
+		if (onDone) onDone(nil);
+		return;
+	}
+	NSString *token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	NSString *station = [self.station copy];
+	Item *last = [self.playlist lastObject];
+	NSString *queue = last ? [last.itemId copy] : nil;
+	self.loadingStation = YES;
+	[[[NSOperationQueue alloc] init] addOperationWithBlock:^{
+		NSMutableDictionary *ctx = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+			[NSMutableArray array], @"items", token, @"token", nil];
+		c_yandex_music_get_station_tracks([token UTF8String], [station UTF8String],
+				[queue UTF8String], "200x200", (__bridge void *)ctx, station_track);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			self.loadingStation = NO;
+			if (![station isEqualToString:self.station]) {
+				if (onDone) onDone(@"cancelled");
+				return;
+			}
+			NSArray *items = [ctx objectForKey:@"items"];
+			if ([ctx objectForKey:@"batch"])
+				self.stationBatch = [ctx objectForKey:@"batch"];
+			NSMutableSet *known = [NSMutableSet set];
+			for (Item *i in self.playlist)
+				[known addObject:i.itemId];
+			for (Item *i in items)
+				if (![known containsObject:i.itemId])
+					[self.playlist addObject:i];
+			[self queueChanged];
+			NSString *error = [ctx objectForKey:@"error"];
+			if (!error && !items.count)
+				error = @"Моя волна не вернула треков";
+			if (onDone) onDone(error);
+		});
+	}];
+}
+
+/* Keep a couple of tracks queued ahead while a station plays. */
+-(void)fetchStationIfNeeded{
+	if (!self.station || self.loadingStation)
+		return;
+	if (self.current + 2 < (NSInteger)self.playlist.count)
+		return;
+	BOOL waiting = (self.current + 1 >= (NSInteger)self.playlist.count) &&
+		self.playbackState != MPMoviePlaybackStatePlaying;
+	[self loadStationBatch:^(NSString *error) {
+		if (!error && waiting && self.current + 1 < (NSInteger)self.playlist.count)
+			[self playIndex:self.current + 1 onDone:NULL];
+	}];
+}
+
+-(NSString *)feedbackTrackId:(Item *)item{
+	if (!item)
+		return nil;
+	if (item.albumId)
+		return [NSString stringWithFormat:@"%@:%ld", item.itemId, item.albumId];
+	return item.itemId;
+}
+
+-(void)stationFeedback:(NSString *)type item:(Item *)item played:(NSTimeInterval)played{
+	if (!self.station)
+		return;
+	NSString *token = [[NSUserDefaults standardUserDefaults] valueForKey:@"token"];
+	NSString *station = [self.station copy];
+	NSString *batch = [self.stationBatch copy];
+	NSString *trackId = [self feedbackTrackId:item];
+	if (isnan(played) || played < 0)
+		played = 0;
+	[[[NSOperationQueue alloc] init] addOperationWithBlock:^{
+		c_yandex_music_rotor_feedback([token UTF8String], [station UTF8String],
+				[batch UTF8String], [type UTF8String], [trackId UTF8String], played);
+	}];
+}
+
+-(void)stationTrackStarted:(Item *)item{
+	if (!self.station)
+		return;
+	[self stationFeedback:@"trackStarted" item:item played:0];
+	[self fetchStationIfNeeded];
 }
 
 -(void)setPlayInfoWithArt:(Item *)item{
@@ -325,6 +549,7 @@ NSNumber* reason = [[notification userInfo] objectForKey:MPMoviePlayerPlaybackDi
 - (void)nowPlayingChanged:(NSNotification*)notification {
 }
 - (void)playbackStateChanged:(NSNotification*)notification {
+	[[NSNotificationCenter defaultCenter] postNotificationName:YMPlayerStateDidChangeNotification object:self];
 }
 
 - (void)dealloc {

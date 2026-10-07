@@ -5,6 +5,7 @@
  * Last Modified Date: 13.09.2023
  * Last Modified By  : Igor V. Sementsov <ig.kuzm@gmail.com>
  */
+#import "YMTheme.h"
 #import "FavoritesViewController.h"
 #include "AppDelegate.h"
 #import "TrackListViewController.h"
@@ -47,6 +48,7 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	[[YMTheme current] styleController:self];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:@"YandexTokenDidUpdateNotification" object:nil];
 	[self setTitle:@"Избранное"];	
 	
@@ -66,7 +68,7 @@
 	//spinner
 	self.spinner = 
 		[[UIActivityIndicatorView alloc] 
-		initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+		initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle];
 	[self.tableView addSubview:self.spinner];
 	self.spinner.tag = 12;
 
@@ -182,7 +184,7 @@ static int get_favorites(void *data, track_t *track, const char *error)
 		reuseIdentifier: @"cell"];
 		cell.accessoryView = 
 			[[UIActivityIndicatorView alloc] 
-			initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+			initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle];
 	}
 	item.imageView = cell.imageView;
 	[cell.textLabel setText:item.title];
@@ -231,6 +233,10 @@ static int get_favorites(void *data, track_t *track, const char *error)
 
 - (void)dealloc {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[[YMTheme current] styleCell:cell];
 }
 
 @end
