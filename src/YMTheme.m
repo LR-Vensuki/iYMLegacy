@@ -162,7 +162,7 @@ static YMTheme *current_theme = nil;
 		t.accent = YMRGB(214, 140, 66);    t.accentDark = YMRGB(160, 92, 32);
 		t.accentText = YMRGB(255, 244, 226);
 		t.heroTop = YMRGB(236, 172, 98);   t.heroBottom = YMRGB(192, 118, 50);
-		t.heroText = YMRGB(78, 44, 10);    t.heroSubtext = YMRGBA(78, 44, 10, 0.7);
+		t.heroText = YMRGB(78, 44, 10);    t.heroSubtext = YMRGB(66, 36, 8);
 		t.panelTop = YMRGB(104, 64, 30);   t.panelBottom = YMRGB(58, 34, 12);
 		t.panelGlyph = YMRGB(255, 220, 166); t.panelText = YMRGB(222, 182, 132);
 		t.fieldTop = YMRGB(236, 222, 198); t.fieldBottom = YMRGB(252, 246, 234);

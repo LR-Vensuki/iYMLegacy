@@ -172,6 +172,9 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	/* no header over an empty section (e.g. before the first search) */
+	if (![self tableView:tableView numberOfRowsInSection:section])
+		return @"";
 	switch (section) {
 		case 0: return @"Лучшее";
 		case 1: return (self.tracks.count > 1 )?@"":@"Треки";
