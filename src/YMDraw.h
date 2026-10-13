@@ -53,6 +53,11 @@ typedef enum {
                      color:(UIColor *)color highlight:(UIColor *)highlight
                  inContext:(CGContextRef)ctx;
 
+/* The closed path traced the other way round, for punching holes with the
+ * nonzero rule. -bezierPathByReversingPath on iOS 6 drops the move-to of the
+ * reversed subpath ("no current point"), so this rebuilds it by hand. */
++ (UIBezierPath *)reversedPath:(UIBezierPath *)path;
+
 + (UIBezierPath *)pathForGlyph:(YMGlyph)glyph inRect:(CGRect)rect;
 /* Glyph filled with a vertical gradient, optional emboss shadow. */
 + (UIImage *)glyph:(YMGlyph)glyph size:(CGFloat)size

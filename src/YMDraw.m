@@ -180,6 +180,99 @@ static void stroke_dashed(CGContextRef ctx, CGPathRef path, UIColor *color, CGSi
 	stroke_dashed(ctx, p.CGPath, color, CGSizeZero);
 }
 
+#pragma mark - reversing
+
+typedef struct {
+	CGPathElementType type;
+	CGPoint pts[3];
+} ym_element;
+
+static void collect_element(void *info, const CGPathElement *e)
+{
+	NSMutableData *data = (__bridge NSMutableData *)info;
+	ym_element el;
+	memset(&el, 0, sizeof(el));
+	el.type = e->type;
+	int n = 0;
+	switch (e->type) {
+	case kCGPathElementMoveToPoint:
+	case kCGPathElementAddLineToPoint: n = 1; break;
+	case kCGPathElementAddQuadCurveToPoint: n = 2; break;
+	case kCGPathElementAddCurveToPoint: n = 3; break;
+	default: break;
+	}
+	for (int i = 0; i < n; ++i)
+		el.pts[i] = e->points[i];
+	[data appendBytes:&el length:sizeof(el)];
+}
+
+static CGPoint element_end(const ym_element *e)
+{
+	switch (e->type) {
+	case kCGPathElementAddQuadCurveToPoint: return e->pts[1];
+	case kCGPathElementAddCurveToPoint: return e->pts[2];
+	default: return e->pts[0];
+	}
+}
+
+/* Reverse one subpath: elements [from, to), from is its move-to. */
+static void reverse_subpath(UIBezierPath *out, const ym_element *el, NSUInteger from, NSUInteger to, BOOL closed)
+{
+	if (to <= from + 1)
+		return;
+	CGPoint start = el[from].pts[0];
+	CGPoint end = element_end(&el[to - 1]);
+	if (closed) {
+		/* the implicit closing line runs end -> start; reversed it is start -> end */
+		[out moveToPoint:start];
+		if (!CGPointEqualToPoint(start, end))
+			[out addLineToPoint:end];
+	} else {
+		[out moveToPoint:end];
+	}
+	for (NSUInteger i = to - 1; i > from; --i) {
+		CGPoint prev = element_end(&el[i - 1]);
+		switch (el[i].type) {
+		case kCGPathElementAddLineToPoint:
+			[out addLineToPoint:prev];
+			break;
+		case kCGPathElementAddQuadCurveToPoint:
+			[out addQuadCurveToPoint:prev controlPoint:el[i].pts[0]];
+			break;
+		case kCGPathElementAddCurveToPoint:
+			[out addCurveToPoint:prev controlPoint1:el[i].pts[1] controlPoint2:el[i].pts[0]];
+			break;
+		default:
+			break;
+		}
+	}
+	if (closed)
+		[out closePath];
+}
+
++ (UIBezierPath *)reversedPath:(UIBezierPath *)path
+{
+	NSMutableData *data = [NSMutableData data];
+	CGPathApply(path.CGPath, (__bridge void *)data, collect_element);
+	const ym_element *el = data.bytes;
+	NSUInteger count = data.length / sizeof(ym_element);
+	UIBezierPath *out = [UIBezierPath bezierPath];
+	NSUInteger start = NSNotFound;
+	for (NSUInteger i = 0; i <= count; ++i) {
+		BOOL atEnd = (i == count);
+		if (!atEnd && el[i].type == kCGPathElementMoveToPoint) {
+			if (start != NSNotFound)
+				reverse_subpath(out, el, start, i, NO);
+			start = i;
+		} else if (atEnd || el[i].type == kCGPathElementCloseSubpath) {
+			if (start != NSNotFound)
+				reverse_subpath(out, el, start, i, !atEnd);
+			start = NSNotFound;
+		}
+	}
+	return out;
+}
+
 #pragma mark - glyphs (drawn in a 100x100 design space)
 
 static UIBezierPath *stroked(UIBezierPath *path, CGFloat width)
@@ -234,13 +327,13 @@ static UIBezierPath *design_path(YMGlyph glyph)
 		CGFloat roof[] = {8, 50, 50, 10, 92, 50, 82, 50, 50, 22, 18, 50};
 		add_poly(p, roof, 6);
 		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(22, 48, 56, 40)]];
-		[p appendPath:[[UIBezierPath bezierPathWithRect:CGRectMake(43, 62, 14, 26)] bezierPathByReversingPath]];
+		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithRect:CGRectMake(43, 62, 14, 26)]]];
 		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(68, 16, 10, 22)]];
 		break;
 	}
 	case YMGlyphSearch: {
 		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(8, 8, 62, 62)]];
-		[p appendPath:[[UIBezierPath bezierPathWithOvalInRect:CGRectMake(19, 19, 40, 40)] bezierPathByReversingPath]];
+		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(19, 19, 40, 40)]]];
 		UIBezierPath *handle = [UIBezierPath bezierPath];
 		[handle moveToPoint:CGPointMake(64, 64)];
 		[handle addLineToPoint:CGPointMake(88, 88)];
@@ -331,7 +424,7 @@ static UIBezierPath *design_path(YMGlyph glyph)
 			[p appendPath:tooth];
 		}
 		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(18, 18, 64, 64)]];
-		[p appendPath:[[UIBezierPath bezierPathWithOvalInRect:CGRectMake(37, 37, 26, 26)] bezierPathByReversingPath]];
+		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(37, 37, 26, 26)]]];
 		break;
 	}
 	case YMGlyphQueue: {

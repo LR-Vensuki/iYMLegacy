@@ -274,7 +274,7 @@ static YMTheme *current_theme = nil;
 				[p addClip];
 				CGContextSetShadowWithColor(ctx, CGSizeMake(0, 1), 3, YMRGBA(0, 0, 0, 0.6).CGColor);
 				UIBezierPath *frame = [UIBezierPath bezierPathWithRect:CGRectInset(r, -6, -6)];
-				[frame appendPath:[p bezierPathByReversingPath]];
+				[frame appendPath:[YMDraw reversedPath:p]];
 				[frame fill];
 				CGContextRestoreGState(ctx);
 			}
@@ -574,7 +574,7 @@ static YMTheme *current_theme = nil;
 		[p addClip];
 		CGContextSetShadowWithColor(ctx, CGSizeMake(0, 1.5), 3, YMRGBA(0, 0, 0, 0.45).CGColor);
 		UIBezierPath *frame = [UIBezierPath bezierPathWithRect:CGRectInset(r, -8, -8)];
-		[frame appendPath:[p bezierPathByReversingPath]];
+		[frame appendPath:[YMDraw reversedPath:p]];
 		[[UIColor blackColor] setFill];
 		[frame fill];
 		CGContextRestoreGState(ctx);
