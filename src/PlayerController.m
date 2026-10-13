@@ -335,6 +335,9 @@ void post_error(void *data, const char *error){
 	self.nowPlaying = nil;
 	self.station = station;
 	self.stationBatch = nil;
+	/* Drop any batch still loading for a previous start, even of the same station. */
+	self.stationGeneration++;
+	self.loadingStation = NO;
 	[self queueChanged];
 	[self loadStationBatch:^(NSString *error) {
 		if (!error) {
@@ -373,6 +376,7 @@ static int station_track(void *data, const char *batch_id, track_t *track, const
 	NSString *station = [self.station copy];
 	Item *last = [self.playlist lastObject];
 	NSString *queue = last ? [last.itemId copy] : nil;
+	NSUInteger generation = self.stationGeneration;
 	self.loadingStation = YES;
 	[[[NSOperationQueue alloc] init] addOperationWithBlock:^{
 		NSMutableDictionary *ctx = [NSMutableDictionary dictionaryWithObjectsAndKeys:
@@ -380,6 +384,10 @@ static int station_track(void *data, const char *batch_id, track_t *track, const
 		c_yandex_music_get_station_tracks([token UTF8String], [station UTF8String],
 				[queue UTF8String], "200x200", (__bridge void *)ctx, station_track);
 		dispatch_async(dispatch_get_main_queue(), ^{
+			if (generation != self.stationGeneration) {
+				if (onDone) onDone(@"cancelled");
+				return;
+			}
 			self.loadingStation = NO;
 			if (![station isEqualToString:self.station]) {
 				if (onDone) onDone(@"cancelled");

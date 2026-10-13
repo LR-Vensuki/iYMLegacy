@@ -36,6 +36,7 @@ typedef enum {
 @property (strong) NSString *station;
 @property (strong) NSString *stationBatch;
 @property BOOL loadingStation;
+@property NSUInteger stationGeneration;
 @property (weak) id appDelegate;
 @property (strong) NSTimer *timer;
 @property (strong) NSTimer *downloadPlaylist;
