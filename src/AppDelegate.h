@@ -20,7 +20,7 @@
 /* Tap on a track, Apple Music style: play it and open Now Playing.
  * %asList: the rest of %items follows (a playlist, an album, liked tracks);
  * otherwise only the tapped track, then My Wave by it. */
--(void)playTrackAt:(NSInteger)index in:(NSArray *)items asList:(BOOL)asList onDone:(void (^)(void))onDone;
+-(void)playTrackAt:(NSInteger)index in:(NSArray *)items asList:(BOOL)asList from:(NSString *)title onDone:(void (^)(void))onDone;
 -(void)openPlayer;
 -(void)showMessage:(NSString *)msg;
 -(void)rebuildInterface;

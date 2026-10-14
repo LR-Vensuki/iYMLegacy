@@ -92,7 +92,7 @@
 			UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
 			[spinner startAnimating];
 			/* search results are not a playlist: the track, then its wave */
-			[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:NO onDone:^{
+			[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:NO from:nil onDone:^{
 				[spinner stopAnimating];
 			}];
 		}

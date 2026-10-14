@@ -12,6 +12,12 @@
 @property (readonly) NSInteger selectedIndex;
 @property (copy) void (^onTap)(Item *item, NSInteger index);
 @property (copy) void (^onLongPress)(Item *item, NSInteger index);
+/* the user brought another cover to the middle (swipe or tap on a side cover) */
+@property (copy) void (^onSelect)(Item *item, NSInteger index);
+/* use the full-size artwork when an item has it (Now Playing) */
+@property (nonatomic) BOOL prefersArtwork;
+@property (nonatomic) BOOL hidesCaption;
+- (void)showIndex:(NSInteger)index animated:(BOOL)animated;
 - (void)reloadTheme;
 @end
 

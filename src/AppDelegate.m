@@ -131,7 +131,7 @@
 		[root openPlayer:YES];
 }
 
--(void)playTrackAt:(NSInteger)index in:(NSArray *)items asList:(BOOL)asList onDone:(void (^)(void))onDone{
+-(void)playTrackAt:(NSInteger)index in:(NSArray *)items asList:(BOOL)asList from:(NSString *)title onDone:(void (^)(void))onDone{
 	if (index < 0 || index >= (NSInteger)items.count) {
 		if (onDone) onDone();
 		return;
@@ -151,6 +151,7 @@
 		return;
 	}
 	[self.player playItems:queue startingAt:start onDone:onDone];
+	self.player.contextTitle = asList ? title : nil;
 	[self openPlayer];
 }
 

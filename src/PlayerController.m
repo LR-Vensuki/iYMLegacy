@@ -211,6 +211,7 @@ void post_error(void *data, const char *error){
 -(void)addToTopAndPlay:(Item *)item onDone:(void (^)())onDone{
 	if (!item) { if (onDone) onDone(); return; }
 	self.station = nil;
+	self.contextTitle = nil;
 	if (self.current < 0) self.current = 0;
 	if (self.current > (NSInteger)self.playlist.count) self.current = self.playlist.count;
 	[self.playlist insertObject:item atIndex:self.current];
@@ -367,6 +368,7 @@ void post_error(void *data, const char *error){
 	self.nowPlaying = nil;
 	self.station = station;
 	self.stationBatch = nil;
+	self.contextTitle = nil;
 	/* Drop any batch still loading for a previous start, even of the same station. */
 	self.stationGeneration++;
 	self.loadingStation = NO;

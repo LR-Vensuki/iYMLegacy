@@ -264,7 +264,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
                 if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle]; cell.accessoryView = spinner; }
 				[spinner startAnimating];
 				/* search results are not a playlist: the track, then its wave */
-				[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:data asList:NO onDone:^{
+				[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:data asList:NO from:nil onDone:^{
 					[spinner stopAnimating];
 				}];
 			}

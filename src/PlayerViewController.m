@@ -13,11 +13,13 @@
 #import <MediaPlayer/MediaPlayer.h>
 #include "Item.h"
 #import "YMTheme.h"
+#import "YMCoverFlowView.h"
 #import "../cYandexMusic/cYandexMusic.h"
 
 @interface PlayerViewController ()
-@property (strong) UIView *artContainer;
-@property (strong) UIImageView *artView;
+@property (strong) YMCoverFlowView *flow;
+@property NSInteger flowOffset;
+@property CGRect artRect;
 @property (strong) UITableView *queueTable;
 @property BOOL showingQueue;
 @property (strong) UILabel *stationLabel;
@@ -88,28 +90,17 @@
 
 	self.navigationItem.rightBarButtonItem = [t barButtonWithGlyph:YMGlyphQueue target:self action:@selector(flip:)];
 
-	/* artwork and, on its back, the queue */
-	self.artContainer = [[UIView alloc] initWithFrame:CGRectZero];
-	self.artContainer.backgroundColor = [UIColor clearColor];
-	self.artContainer.layer.shadowColor = [UIColor blackColor].CGColor;
-	self.artContainer.layer.shadowOpacity = 0.5;
-	self.artContainer.layer.shadowOffset = CGSizeMake(0, 3);
-	self.artContainer.layer.shadowRadius = 5;
-	[self.view addSubview:self.artContainer];
-
-	self.artView = [[UIImageView alloc] initWithFrame:CGRectZero];
-	self.artView.contentMode = UIViewContentModeScaleAspectFill;
-	self.artView.clipsToBounds = YES;
-	self.artView.userInteractionEnabled = YES;
-	self.artView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-	self.artView.layer.borderWidth = 1;
-	self.artView.layer.borderColor = YMRGBA(0, 0, 0, 0.35).CGColor;
-	[self.artContainer addSubview:self.artView];
-	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(flip:)];
-	[self.artView addGestureRecognizer:tap];
+	/* what plays and what comes next, as Cover Flow; it flips over to the queue list */
+	__weak PlayerViewController *weakSelf = self;
+	self.flow = [[YMCoverFlowView alloc] initWithFrame:CGRectMake(0, 0, 320, 260)];
+	self.flow.hidesCaption = YES;
+	self.flow.prefersArtwork = YES;
+	self.flow.onTap = ^(Item *item, NSInteger index) { [weakSelf flip:nil]; };
+	self.flow.onSelect = ^(Item *item, NSInteger index) { [weakSelf flowSelected:index]; };
+	self.flow.onLongPress = ^(Item *item, NSInteger index) { [weakSelf flip:nil]; };
+	[self.view addSubview:self.flow];
 
 	self.queueTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
-	self.queueTable.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	self.queueTable.dataSource = self;
 	self.queueTable.delegate = self;
 	self.queueTable.rowHeight = 48;
@@ -226,10 +217,14 @@
 		panel = CGRectMake(rx, b.height - panelH, b.width - rx, panelH);
 		info = CGRectMake(rx, MAX(4, (b.height - panelH - infoH) / 2), b.width - rx, infoH);
 	}
-	self.artContainer.frame = art;
-	self.artView.frame = self.artContainer.bounds;
-	self.queueTable.frame = self.artContainer.bounds;
-	self.artContainer.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.artContainer.bounds].CGPath;
+	self.artRect = art;
+	/* the cover in the middle sits exactly on %art, neighbours peek in from the sides */
+	CGFloat flowW = landscape ? (art.origin.x + art.size.width / 2) * 2 : b.width;
+	CGFloat cover = floor(art.size.width * 0.84);
+	self.flow.frame = CGRectMake(0, art.origin.y - 10, flowW, art.size.height + 14);
+	self.flow.coverSize = cover;
+	self.queueTable.frame = art;
+	[self syncFlow:NO];
 
 	self.stationLabel.frame = CGRectMake(info.origin.x + 44, info.origin.y, info.size.width - 88, 14);
 	self.titleLabel.frame = CGRectMake(info.origin.x + 44, info.origin.y + 15, info.size.width - 88, 22);
@@ -257,7 +252,6 @@
 
 - (void)refreshTrack
 {
-	YMTheme *t = [YMTheme current];
 	PlayerController *player = self.appDelegate.player;
 	Item *item = player.nowPlaying;
 	self.current = item;
@@ -265,33 +259,65 @@
 		self.titleLabel.text = @"Ничего не играет";
 		self.artistLabel.text = @"Выберите трек или включите Мою волну";
 		self.stationLabel.text = nil;
-		self.artView.image = [t coverPlaceholderWithSize:CGSizeMake(280, 280)];
 		self.likeButton.hidden = YES;
+		[self syncFlow:NO];
 		return;
 	}
 	self.likeButton.hidden = NO;
 	self.titleLabel.text = item.title;
 	self.artistLabel.text = item.albumTitle.length
 		? [NSString stringWithFormat:@"%@ — %@", item.subtitle, item.albumTitle] : item.subtitle;
-	self.stationLabel.text = [player.station isEqualToString:YMStationMyWave] ? @"МОЯ ВОЛНА" :
-		[player.station hasPrefix:@"track:"] ? @"МОЯ ВОЛНА ПО ТРЕКУ" :
-		(player.playlist.count > 1 ? [NSString stringWithFormat:@"%d ИЗ %d",
-		                              (int)player.current + 1, (int)player.playlist.count] : nil);
+	NSString *position = player.playlist.count > 1
+		? [NSString stringWithFormat:@"%d ИЗ %d", (int)player.current + 1, (int)player.playlist.count] : nil;
+	if ([player.station isEqualToString:YMStationMyWave])
+		self.stationLabel.text = @"МОЯ ВОЛНА";
+	else if ([player.station hasPrefix:@"track:"])
+		self.stationLabel.text = @"МОЯ ВОЛНА ПО ТРЕКУ";
+	else if (player.contextTitle.length)
+		self.stationLabel.text = [(position ? [NSString stringWithFormat:@"%@ · %@", player.contextTitle, position]
+		                                    : player.contextTitle) uppercaseString];
+	else
+		self.stationLabel.text = position;
 	[self showArtFor:item];
 	[self checkTrackIsLiked:item];
 }
 
 - (void)showArtFor:(Item *)item
 {
-	YMTheme *t = [YMTheme current];
-	UIImage *image = item.artImage ? item.artImage : item.coverImage;
-	if (!image)
-		image = [t coverPlaceholderWithSize:CGSizeMake(280, 280)];
-	if (image != self.artView.image) {
-		[UIView transitionWithView:self.artView duration:0.25
-		                   options:UIViewAnimationOptionTransitionCrossDissolve
-		                animations:^{ self.artView.image = image; } completion:nil];
+	[self syncFlow:YES];
+}
+
+/* Show a window of the queue around the current track: what was played on
+ * the left, what comes next on the right (My Wave or the playlist). */
+- (void)syncFlow:(BOOL)animated
+{
+	PlayerController *player = self.appDelegate.player;
+	NSArray *queue = [player.playlist copy];
+	NSInteger current = MAX(0, MIN(player.current, (NSInteger)queue.count - 1));
+	if (!queue.count) {
+		self.flowOffset = 0;
+		if (self.flow.items.count)
+			self.flow.items = @[];
+		return;
 	}
+	NSInteger first = MAX(0, current - 10);
+	NSInteger last = MIN((NSInteger)queue.count, current + 30);
+	NSArray *window = [queue subarrayWithRange:NSMakeRange(first, last - first)];
+	if (first != self.flowOffset || ![window isEqualToArray:self.flow.items]) {
+		self.flowOffset = first;
+		self.flow.items = window;
+		[self.flow showIndex:current - first animated:NO];
+	} else if (self.flow.selectedIndex != current - first) {
+		[self.flow showIndex:current - first animated:animated];
+	}
+}
+
+- (void)flowSelected:(NSInteger)index
+{
+	PlayerController *player = self.appDelegate.player;
+	NSInteger target = self.flowOffset + index;
+	if (target != player.current)
+		[player playIndex:target onDone:NULL];
 }
 
 - (void)refreshControls
@@ -405,10 +431,11 @@
 /* Flip the artwork over to the queue, like the iPod. */
 - (void)flip:(id)sender
 {
-	UIView *from = self.showingQueue ? self.queueTable : self.artView;
-	UIView *to = self.showingQueue ? self.artView : self.queueTable;
+	UIView *from = self.showingQueue ? self.queueTable : self.flow;
+	UIView *to = self.showingQueue ? self.flow : self.queueTable;
 	UIViewAnimationOptions dir = self.showingQueue ? UIViewAnimationOptionTransitionFlipFromLeft : UIViewAnimationOptionTransitionFlipFromRight;
-	to.frame = self.artContainer.bounds;
+	[self.view setNeedsLayout];
+	[self.view layoutIfNeeded];
 	if (!self.showingQueue) {
 		[self.queueTable reloadData];
 		[self scrollQueueToCurrent];

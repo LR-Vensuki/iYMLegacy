@@ -200,7 +200,7 @@ static int get_favorites(void *data, track_t *track, const char *error)
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
 	[spinner startAnimating];
-	[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:YES onDone:^{
+	[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:YES from:@"Избранное" onDone:^{
 		[spinner stopAnimating];
 	}];
 	

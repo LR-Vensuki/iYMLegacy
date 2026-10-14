@@ -64,6 +64,8 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 
 		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coverLoaded:)
 				name:YMItemCoverDidLoadNotification object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coverLoaded:)
+				name:YMItemArtDidLoadNotification object:nil];
 		[self reloadTheme];
 	}
 	return self;
@@ -85,6 +87,39 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 	self.placeholder = [YMDraw reflectedImage:[t coverPlaceholderWithSize:CGSizeMake(self.coverSize, self.coverSize)]
 	                                     size:CGSizeMake(self.coverSize, self.coverSize) fraction:kReflection];
 	[self reloadImages];
+}
+
+- (void)setHidesCaption:(BOOL)hides
+{
+	_hidesCaption = hides;
+	self.titleLabel.hidden = hides;
+	self.subtitleLabel.hidden = hides;
+}
+
+- (void)setCoverSize:(CGFloat)size
+{
+	if (size == _coverSize)
+		return;
+	/* spacing follows the cover size: keep the same cover in the middle */
+	NSInteger keep = self.selectedIndex;
+	_coverSize = size;
+	[self reloadTheme];
+	[self setNeedsLayout];
+	[self layoutIfNeeded];
+	if (keep >= 0 && keep < (NSInteger)self.items.count) {
+		self.scroll.contentOffset = CGPointMake(keep * [self spacing], 0);
+		[self layoutCovers];
+	}
+}
+
+- (void)showIndex:(NSInteger)index animated:(BOOL)animated
+{
+	if (index < 0 || index >= (NSInteger)self.items.count)
+		return;
+	[self layoutIfNeeded];
+	[self.scroll setContentOffset:CGPointMake(index * [self spacing], 0) animated:animated];
+	if (!animated)
+		[self layoutCovers];
 }
 
 - (CGFloat)spacing { return self.coverSize * 0.62; }
@@ -112,9 +147,10 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 
 - (UIImage *)coverImageForItem:(Item *)item
 {
-	if (!item.coverImage)
+	UIImage *image = (self.prefersArtwork && item.artImage) ? item.artImage : item.coverImage;
+	if (!image)
 		return self.placeholder;
-	return [YMDraw reflectedImage:item.coverImage size:CGSizeMake(self.coverSize, self.coverSize) fraction:kReflection];
+	return [YMDraw reflectedImage:image size:CGSizeMake(self.coverSize, self.coverSize) fraction:kReflection];
 }
 
 - (void)reloadImages
@@ -208,6 +244,23 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 	target->x = index * s;
 }
 
+- (void)settled
+{
+	if (self.onSelect && self.items.count)
+		self.onSelect([self.items objectAtIndex:self.selectedIndex], self.selectedIndex);
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+	if (!decelerate)
+		[self settled];
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+	[self settled];
+}
+
 - (void)scrollToIndex:(NSInteger)index
 {
 	[self.scroll setContentOffset:CGPointMake(index * [self spacing], 0) animated:YES];
@@ -244,6 +297,8 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 			self.onTap([self.items objectAtIndex:index], index);
 	} else {
 		[self scrollToIndex:index];
+		if (self.onSelect)
+			self.onSelect([self.items objectAtIndex:index], index);
 	}
 }
 

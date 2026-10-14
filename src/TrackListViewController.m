@@ -194,7 +194,7 @@ static int get_tracks(void *data, track_t *track, const char *error)
 	UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 	UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
 	[spinner startAnimating];
-	[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:YES onDone:^{
+	[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:self.data asList:YES from:self.title onDone:^{
 		[spinner stopAnimating];
 	}];
 		

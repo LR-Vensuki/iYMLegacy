@@ -35,6 +35,8 @@ typedef enum {
 /* rotor station being played ("My Wave"), nil for an ordinary queue */
 @property (strong) NSString *station;
 @property (strong) NSString *stationBatch;
+/* what the queue came from ("Избранное", a playlist title), nil for search */
+@property (strong) NSString *contextTitle;
 @property BOOL loadingStation;
 @property NSUInteger stationGeneration;
 @property (weak) id appDelegate;
