@@ -25,6 +25,9 @@
 @property (strong) UINavigationController *playerNav;
 @property (readwrite) BOOL playerOpen;
 @property BOOL dragging;
+/* an appearance transition of Now Playing that has not ended yet */
+@property BOOL appearing;
+@property NSUInteger transition;
 @end
 
 @implementation RootViewController
@@ -154,11 +157,30 @@
 		v.frame = CGRectOffset(b, 0, b.size.height);
 	v.hidden = NO;
 	[self.view bringSubviewToFront:v];
-	[self.playerNav beginAppearanceTransition:YES animated:animated];
+	NSUInteger transition = [self beginPlayerAppearance:YES animated:animated];
 	[UIView animateWithDuration:animated ? 0.35 : 0 delay:0
 	                    options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
 	                 animations:^{ v.frame = b; }
-	                 completion:^(BOOL finished) { [self.playerNav endAppearanceTransition]; }];
+	                 completion:^(BOOL finished) { [self endPlayerAppearance:transition]; }];
+}
+
+/* Opening and closing can overlap (a quick tap, then a swipe): end the
+ * previous appearance transition before starting the next one. */
+- (NSUInteger)beginPlayerAppearance:(BOOL)appearing animated:(BOOL)animated
+{
+	if (self.appearing)
+		[self.playerNav endAppearanceTransition];
+	[self.playerNav beginAppearanceTransition:appearing animated:animated];
+	self.appearing = YES;
+	return ++self.transition;
+}
+
+- (void)endPlayerAppearance:(NSUInteger)transition
+{
+	if (transition != self.transition || !self.appearing)
+		return;
+	self.appearing = NO;
+	[self.playerNav endAppearanceTransition];
 }
 
 - (void)closePlayer:(BOOL)animated
@@ -168,14 +190,14 @@
 	self.playerOpen = NO;
 	UIView *v = self.playerNav.view;
 	CGRect b = self.view.bounds;
-	[self.playerNav beginAppearanceTransition:NO animated:animated];
+	NSUInteger transition = [self beginPlayerAppearance:NO animated:animated];
 	[UIView animateWithDuration:animated ? 0.3 : 0 delay:0
 	                    options:UIViewAnimationOptionCurveEaseIn | UIViewAnimationOptionBeginFromCurrentState
 	                 animations:^{ v.frame = CGRectOffset(b, 0, b.size.height); }
 	                 completion:^(BOOL finished) {
 		if (!self.playerOpen)
 			v.hidden = YES;
-		[self.playerNav endAppearanceTransition];
+		[self endPlayerAppearance:transition];
 	}];
 }
 

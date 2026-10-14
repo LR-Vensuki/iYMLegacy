@@ -8,4 +8,4 @@ Depends: firmware (>= 6.0)
 Maintainer: LegacyReborn Project
 Author: LegacyReborn Project (fork of iYMLegacy by igkuzm)
 Homepage: https://github.com/LR-Vensuki/iYMLegacy
-Description: Yandex Music client for iOS 6: feed, search, favorites, playlists and playback. A fork of iYMLegacy by igkuzm.
+Description: Yandex Music client for iOS 6 on iPhone and iPad: My Wave, feed, search, favorites, playlists and playback. A fork of iYMLegacy by igkuzm.
