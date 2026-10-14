@@ -21,6 +21,7 @@ iYMLegacy_FILES = \
     src/HomeViewController.m \
     src/ThemesViewController.m \
     src/YMCoverFlowView.m \
+    src/YMMiniPlayer.m \
     src/FavoritesViewController.m \
     src/SearchViewController.m \
     src/SearchViewControllerDetail.m \

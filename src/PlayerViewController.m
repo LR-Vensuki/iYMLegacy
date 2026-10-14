@@ -43,7 +43,7 @@
 - (id)init
 {
 	if ((self = [super init]))
-		self.title = @"Плеер";
+		self.title = @"Сейчас играет";
 	return self;
 }
 
@@ -263,7 +263,7 @@
 	self.current = item;
 	if (!item) {
 		self.titleLabel.text = @"Ничего не играет";
-		self.artistLabel.text = @"Включите Мою волну на главной";
+		self.artistLabel.text = @"Выберите трек или включите Мою волну";
 		self.stationLabel.text = nil;
 		self.artView.image = [t coverPlaceholderWithSize:CGSizeMake(280, 280)];
 		self.likeButton.hidden = YES;
@@ -274,6 +274,7 @@
 	self.artistLabel.text = item.albumTitle.length
 		? [NSString stringWithFormat:@"%@ — %@", item.subtitle, item.albumTitle] : item.subtitle;
 	self.stationLabel.text = [player.station isEqualToString:YMStationMyWave] ? @"МОЯ ВОЛНА" :
+		[player.station hasPrefix:@"track:"] ? @"МОЯ ВОЛНА ПО ТРЕКУ" :
 		(player.playlist.count > 1 ? [NSString stringWithFormat:@"%d ИЗ %d",
 		                              (int)player.current + 1, (int)player.playlist.count] : nil);
 	[self showArtFor:item];

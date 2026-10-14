@@ -22,6 +22,7 @@
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	[[YMTheme current] styleController:self];
+	[self.tableView addGestureRecognizer:[[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(trackLongPress:)]];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(yandexTokenDidUpdate:) name:YandexTokenDidUpdateNotification object:nil];
 	[self setTitle:@"Поиск"];
 	
@@ -262,11 +263,10 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 				UIActivityIndicatorView *spinner = (UIActivityIndicatorView*)cell.accessoryView;
                 if (!spinner) { spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:[YMTheme current].spinnerStyle]; cell.accessoryView = spinner; }
 				[spinner startAnimating];
-				ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:NO onDone:^{
+				/* search results are not a playlist: the track, then its wave */
+				[(AppDelegate *)[[UIApplication sharedApplication] delegate] playTrackAt:indexPath.item in:data asList:NO onDone:^{
 					[spinner stopAnimating];
 				}];
-				//[as showInView:self.view];		
-				[as showFromTabBar:self.tabBarController.tabBar];
 			}
 		}
 		else if (self.selected.itemType == ITEM_PLAYLIST ||
@@ -355,6 +355,21 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
 	[[YMTheme current] styleCell:cell];
+}
+
+
+/* long press on a track: the old menu (play next, add to queue) */
+- (void)trackLongPress:(UILongPressGestureRecognizer *)lp {
+	if (lp.state != UIGestureRecognizerStateBegan)
+		return;
+	NSIndexPath *indexPath = [self.tableView indexPathForRowAtPoint:[lp locationInView:self.tableView]];
+	if (!indexPath || indexPath.section != 0)
+		return;
+	Item *item = [self.best objectAtIndex:indexPath.item];
+	if (item.itemType != ITEM_TRACK && item.itemType != ITEM_PODCAST_EPOSODE)
+		return;
+	ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];
+	[as showFromTabBar:self.tabBarController.tabBar];
 }
 
 @end

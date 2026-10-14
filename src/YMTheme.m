@@ -295,12 +295,13 @@ static YMTheme *current_theme = nil;
 			CGFloat mid = CGRectGetMidY(r), arrow = 11;
 			p = [UIBezierPath bezierPath];
 			[p moveToPoint:CGPointMake(r.origin.x, mid)];
-			[p addLineToPoint:CGPointMake(r.origin.x + arrow, r.origin.y + 1)];
+			/* edges stay level past the arrow: the middle of the image is tiled */
+			[p addLineToPoint:CGPointMake(r.origin.x + arrow, r.origin.y)];
 			[p addLineToPoint:CGPointMake(CGRectGetMaxX(r) - 5, r.origin.y)];
 			[p addQuadCurveToPoint:CGPointMake(CGRectGetMaxX(r), r.origin.y + 5) controlPoint:CGPointMake(CGRectGetMaxX(r), r.origin.y)];
 			[p addLineToPoint:CGPointMake(CGRectGetMaxX(r), CGRectGetMaxY(r) - 5)];
 			[p addQuadCurveToPoint:CGPointMake(CGRectGetMaxX(r) - 5, CGRectGetMaxY(r)) controlPoint:CGPointMake(CGRectGetMaxX(r), CGRectGetMaxY(r))];
-			[p addLineToPoint:CGPointMake(r.origin.x + arrow, CGRectGetMaxY(r) - 1)];
+			[p addLineToPoint:CGPointMake(r.origin.x + arrow, CGRectGetMaxY(r))];
 			[p closePath];
 			p.lineJoinStyle = kCGLineJoinRound;
 		} else {

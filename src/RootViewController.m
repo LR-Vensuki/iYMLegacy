@@ -16,6 +16,16 @@
 #import "PlayerViewController.h"
 #import "YandexConnect.h"
 #import "YMTheme.h"
+#import "YMMiniPlayer.h"
+#import <MediaPlayer/MediaPlayer.h>
+#import <QuartzCore/QuartzCore.h>
+
+@interface RootViewController () <UIGestureRecognizerDelegate>
+@property (strong) YMMiniPlayer *mini;
+@property (strong) UINavigationController *playerNav;
+@property (readwrite) BOOL playerOpen;
+@property BOOL dragging;
+@end
 
 @implementation RootViewController
 
@@ -36,10 +46,38 @@
 	[self setViewControllers:@[
 		[self tab:[[HomeViewController alloc] init] title:@"Главная" glyph:YMGlyphHome tag:0],
 		[self tab:[[SearchViewController alloc] init] title:@"Поиск" glyph:YMGlyphSearch tag:1],
-		[self tab:[[PlayerViewController alloc] init] title:@"Плеер" glyph:YMGlyphNote tag:2],
-		[self tab:[[FavoritesViewController alloc] init] title:@"Избранное" glyph:YMGlyphHeartFilled tag:3],
-		[self tab:[[PlaylistsViewController alloc] init] title:@"Плейлисты" glyph:YMGlyphPlaylists tag:4],
+		[self tab:[[FavoritesViewController alloc] init] title:@"Избранное" glyph:YMGlyphHeartFilled tag:2],
+		[self tab:[[PlaylistsViewController alloc] init] title:@"Плейлисты" glyph:YMGlyphPlaylists tag:3],
 	] animated:NO];
+
+	__weak RootViewController *weakSelf = self;
+	self.mini = [[YMMiniPlayer alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, YMMiniPlayerHeight)];
+	self.mini.onOpen = ^{ [weakSelf openPlayer:YES]; };
+	self.mini.onDrag = ^(UIPanGestureRecognizer *pan) {
+		if (pan.state == UIGestureRecognizerStateBegan && [pan velocityInView:pan.view].y < 0)
+			[weakSelf openPlayer:YES];
+	};
+	[self.mini refresh];
+	[self.view addSubview:self.mini];
+
+	PlayerViewController *pvc = [[PlayerViewController alloc] init];
+	pvc.navigationItem.leftBarButtonItem = [[YMTheme current] barButtonWithGlyph:YMGlyphChevronDown
+			target:self action:@selector(closeTapped:)];
+	self.playerNav = [[UINavigationController alloc] initWithRootViewController:pvc];
+	UIView *pv = self.playerNav.view;
+	pv.hidden = YES;
+	pv.layer.shadowColor = [UIColor blackColor].CGColor;
+	pv.layer.shadowOpacity = 0.5;
+	pv.layer.shadowRadius = 6;
+	pv.layer.shadowOffset = CGSizeMake(0, -2);
+	[self.view addSubview:pv];
+	UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragPlayer:)];
+	pan.delegate = self;
+	[pv addGestureRecognizer:pan];
+
+	NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+	[nc addObserver:self selector:@selector(playerDidChange:) name:YMPlayerTrackDidChangeNotification object:nil];
+	[nc addObserver:self selector:@selector(playerDidChange:) name:YMPlayerQueueDidChangeNotification object:nil];
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(tokenDidUpdate:)
 			name:YandexTokenDidUpdateNotification object:nil];
@@ -65,6 +103,130 @@
 		return;
 	YandexConnect *yc = [[YandexConnect alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	[self presentViewController:yc animated:YES completion:nil];
+}
+
+#pragma mark - mini player and Now Playing
+
+- (BOOL)miniVisible
+{
+	PlayerController *player = ((AppDelegate *)[UIApplication sharedApplication].delegate).player;
+	return player.nowPlaying != nil || player.playlist.count > 0;
+}
+
+- (void)playerDidChange:(NSNotification *)n
+{
+	BOOL visible = [self miniVisible];
+	if (visible == self.mini.hidden)
+		[UIView animateWithDuration:0.25 animations:^{ [self.view setNeedsLayout]; [self.view layoutIfNeeded]; }];
+}
+
+- (void)viewDidLayoutSubviews
+{
+	[super viewDidLayoutSubviews];
+	CGRect b = self.view.bounds;
+	CGRect tab = self.tabBar.frame;
+	BOOL show = [self miniVisible];
+	CGFloat h = show ? YMMiniPlayerHeight : 0;
+	/* the tab content ends above the mini player */
+	for (UIView *v in self.view.subviews) {
+		if (v == self.tabBar || v == self.mini || v == self.playerNav.view)
+			continue;
+		CGRect f = v.frame;
+		f.size.height = MAX(0, tab.origin.y - h - f.origin.y);
+		v.frame = f;
+	}
+	self.mini.hidden = !show;
+	self.mini.frame = CGRectMake(0, tab.origin.y - YMMiniPlayerHeight, b.size.width, YMMiniPlayerHeight);
+	if (!self.playerNav.view.hidden && !self.dragging)
+		self.playerNav.view.frame = self.playerOpen ? b : CGRectOffset(b, 0, b.size.height);
+	[self.view bringSubviewToFront:self.mini];
+	[self.view bringSubviewToFront:self.playerNav.view];
+}
+
+- (void)openPlayer:(BOOL)animated
+{
+	if (self.playerOpen)
+		return;
+	self.playerOpen = YES;
+	UIView *v = self.playerNav.view;
+	CGRect b = self.view.bounds;
+	if (v.hidden)
+		v.frame = CGRectOffset(b, 0, b.size.height);
+	v.hidden = NO;
+	[self.view bringSubviewToFront:v];
+	[self.playerNav beginAppearanceTransition:YES animated:animated];
+	[UIView animateWithDuration:animated ? 0.35 : 0 delay:0
+	                    options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState
+	                 animations:^{ v.frame = b; }
+	                 completion:^(BOOL finished) { [self.playerNav endAppearanceTransition]; }];
+}
+
+- (void)closePlayer:(BOOL)animated
+{
+	if (!self.playerOpen)
+		return;
+	self.playerOpen = NO;
+	UIView *v = self.playerNav.view;
+	CGRect b = self.view.bounds;
+	[self.playerNav beginAppearanceTransition:NO animated:animated];
+	[UIView animateWithDuration:animated ? 0.3 : 0 delay:0
+	                    options:UIViewAnimationOptionCurveEaseIn | UIViewAnimationOptionBeginFromCurrentState
+	                 animations:^{ v.frame = CGRectOffset(b, 0, b.size.height); }
+	                 completion:^(BOOL finished) {
+		if (!self.playerOpen)
+			v.hidden = YES;
+		[self.playerNav endAppearanceTransition];
+	}];
+}
+
+- (void)closeTapped:(id)sender
+{
+	[self closePlayer:YES];
+}
+
+/* drag Now Playing down to put it away */
+- (void)dragPlayer:(UIPanGestureRecognizer *)pan
+{
+	UIView *v = self.playerNav.view;
+	CGRect b = self.view.bounds;
+	CGFloat y = MAX(0, [pan translationInView:self.view].y);
+	switch (pan.state) {
+	case UIGestureRecognizerStateBegan:
+		self.dragging = YES;
+		break;
+	case UIGestureRecognizerStateChanged:
+		v.frame = CGRectOffset(b, 0, y);
+		break;
+	default: {
+		self.dragging = NO;
+		CGFloat speed = [pan velocityInView:self.view].y;
+		if (pan.state == UIGestureRecognizerStateEnded && (y > b.size.height / 4 || speed > 600)) {
+			[self closePlayer:YES];
+		} else {
+			[UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionCurveEaseOut
+			                 animations:^{ v.frame = b; } completion:nil];
+		}
+		break;
+	}
+	}
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)g
+{
+	if (![g isKindOfClass:[UIPanGestureRecognizer class]])
+		return YES;
+	CGPoint vel = [(UIPanGestureRecognizer *)g velocityInView:self.view];
+	return vel.y > 0 && vel.y > fabs(vel.x);
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldReceiveTouch:(UITouch *)touch
+{
+	/* leave sliders, the volume control and the queue list alone */
+	for (UIView *v = touch.view; v && v != g.view; v = v.superview)
+		if ([v isKindOfClass:[UISlider class]] || [v isKindOfClass:[MPVolumeView class]] ||
+		    [v isKindOfClass:[UITableView class]])
+			return NO;
+	return YES;
 }
 
 @end

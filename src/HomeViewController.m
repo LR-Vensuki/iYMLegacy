@@ -68,7 +68,7 @@ enum { kSectionWave, kSectionTracks, kSectionPlaylists, kSectionCount };
 	self.coverFlow.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	__weak HomeViewController *weakSelf = self;
 	self.coverFlow.onTap = ^(Item *item, NSInteger index) {
-		[weakSelf.appDelegate.player playItems:weakSelf.tracks startingAt:index onDone:NULL];
+		[weakSelf.appDelegate playTrackAt:index in:weakSelf.tracks asList:YES onDone:NULL];
 	};
 	self.coverFlow.onLongPress = ^(Item *item, NSInteger index) {
 		ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];

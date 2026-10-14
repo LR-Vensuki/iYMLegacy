@@ -255,10 +255,42 @@ void post_error(void *data, const char *error){
 			/* wait for the next batch; fetchStationIfNeeded plays it */
 			self.current = self.playlist.count - 1;
 			[self fetchStationIfNeeded];
+		} else if (self.nowPlaying.itemType == ITEM_TRACK && self.nowPlaying.itemId) {
+			/* the queue ran out: carry on with My Wave seeded by the last track,
+			 * the way Yandex Music does */
+			[self continueWaveFrom:self.nowPlaying];
 		}
 		return;
 	}
 	[self playIndex:self.current + 1 onDone:NULL];
+}
+
+-(void)continueWaveFrom:(Item *)item{
+	self.station = [@"track:" stringByAppendingString:item.itemId];
+	self.stationBatch = nil;
+	self.stationGeneration++;
+	self.loadingStation = NO;
+	self.unshuffled = nil;
+	_shuffle = NO;
+	self.current = self.playlist.count - 1;
+	[self loadStationBatch:^(NSString *error) {
+		if (error)
+			return;
+		[self stationFeedback:@"radioStarted" item:nil played:0];
+		if (self.current + 1 < (NSInteger)self.playlist.count)
+			[self playIndex:self.current + 1 onDone:NULL];
+	}];
+}
+
+/* The track played to its end (not skipped). */
+-(void)trackEnded{
+	if (self.queueRepeat == YMRepeatOne && !self.station && self.nowPlaying) {
+		[self playIndex:self.current onDone:NULL];
+		return;
+	}
+	if (self.station && self.nowPlaying)
+		[self stationFeedback:@"trackFinished" item:self.nowPlaying played:self.duration];
+	[self advance];
 }
 
 -(void)prev{
@@ -528,8 +560,7 @@ static int station_track(void *data, const char *batch_id, track_t *track, const
 NSNumber* reason = [[notification userInfo] objectForKey:MPMoviePlayerPlaybackDidFinishReasonUserInfoKey];
 	switch ([reason intValue]) {
 			case MPMovieFinishReasonPlaybackEnded:
-					// play next
-					[self next];
+					[self trackEnded];
 					NSLog(@"playbackFinished. Reason: Playback Ended");
 							break;
 			case MPMovieFinishReasonPlaybackError:

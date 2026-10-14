@@ -275,191 +275,55 @@ static void reverse_subpath(UIBezierPath *out, const ym_element *el, NSUInteger 
 
 #pragma mark - glyphs (drawn in a 100x100 design space)
 
-static UIBezierPath *stroked(UIBezierPath *path, CGFloat width)
-{
-	CGPathRef s = CGPathCreateCopyByStrokingPath(path.CGPath, NULL, width,
-			kCGLineCapRound, kCGLineJoinRound, 10);
-	UIBezierPath *result = [UIBezierPath bezierPathWithCGPath:s];
-	CGPathRelease(s);
-	return result;
-}
+/* Material Symbols Rounded, see icons/material-symbols and tools/gen_icons.py */
+#include "YMIcons.inc"
 
-static void add_poly(UIBezierPath *p, const CGFloat *pts, int n)
+static const char *glyph_icon_name(YMGlyph glyph)
 {
-	[p moveToPoint:CGPointMake(pts[0], pts[1])];
-	for (int i = 1; i < n; ++i)
-		[p addLineToPoint:CGPointMake(pts[i * 2], pts[i * 2 + 1])];
-	[p closePath];
-}
-
-static UIBezierPath *heart_path(void)
-{
-	UIBezierPath *p = [UIBezierPath bezierPath];
-	[p moveToPoint:CGPointMake(50, 88)];
-	[p addCurveToPoint:CGPointMake(8, 34) controlPoint1:CGPointMake(22, 66) controlPoint2:CGPointMake(8, 52)];
-	[p addCurveToPoint:CGPointMake(30, 12) controlPoint1:CGPointMake(8, 20) controlPoint2:CGPointMake(18, 12)];
-	[p addCurveToPoint:CGPointMake(50, 26) controlPoint1:CGPointMake(40, 12) controlPoint2:CGPointMake(47, 18)];
-	[p addCurveToPoint:CGPointMake(70, 12) controlPoint1:CGPointMake(53, 18) controlPoint2:CGPointMake(60, 12)];
-	[p addCurveToPoint:CGPointMake(92, 34) controlPoint1:CGPointMake(82, 12) controlPoint2:CGPointMake(92, 20)];
-	[p addCurveToPoint:CGPointMake(50, 88) controlPoint1:CGPointMake(92, 52) controlPoint2:CGPointMake(78, 66)];
-	[p closePath];
-	return p;
-}
-
-static UIBezierPath *arrow_head(CGPoint tip, CGFloat angle, CGFloat size)
-{
-	UIBezierPath *p = [UIBezierPath bezierPath];
-	[p moveToPoint:CGPointMake(size, 0)];
-	[p addLineToPoint:CGPointMake(-size * 0.6, -size * 0.8)];
-	[p addLineToPoint:CGPointMake(-size * 0.6, size * 0.8)];
-	[p closePath];
-	CGAffineTransform t = CGAffineTransformMakeTranslation(tip.x, tip.y);
-	t = CGAffineTransformRotate(t, angle);
-	[p applyTransform:t];
-	return p;
+	switch (glyph) {
+	case YMGlyphHome: return "home-fill";
+	case YMGlyphSearch: return "search";
+	case YMGlyphNote: return "music_note-fill";
+	case YMGlyphHeart: return "favorite";
+	case YMGlyphHeartFilled: return "favorite-fill";
+	case YMGlyphPlaylists: return "library_music-fill";
+	case YMGlyphPlay: return "play_arrow-fill";
+	case YMGlyphPause: return "pause-fill";
+	case YMGlyphNext: return "skip_next-fill";
+	case YMGlyphPrev: return "skip_previous-fill";
+	case YMGlyphShuffle: return "shuffle";
+	case YMGlyphRepeat: return "repeat";
+	case YMGlyphRepeatOne: return "repeat_one";
+	case YMGlyphGear: return "settings-fill";
+	case YMGlyphQueue: return "queue_music";
+	case YMGlyphWave: return "graphic_eq";
+	case YMGlyphCopy: return "content_copy-fill";
+	case YMGlyphRefresh: return "refresh";
+	case YMGlyphChevronDown: return "keyboard_arrow_down";
+	case YMGlyphMore: return "more_horiz";
+	}
+	return NULL;
 }
 
 static UIBezierPath *design_path(YMGlyph glyph)
 {
 	UIBezierPath *p = [UIBezierPath bezierPath];
-	switch (glyph) {
-	case YMGlyphHome: {
-		CGFloat roof[] = {8, 50, 50, 10, 92, 50, 82, 50, 50, 22, 18, 50};
-		add_poly(p, roof, 6);
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(22, 48, 56, 40)]];
-		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithRect:CGRectMake(43, 62, 14, 26)]]];
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(68, 16, 10, 22)]];
-		break;
-	}
-	case YMGlyphSearch: {
-		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(8, 8, 62, 62)]];
-		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(19, 19, 40, 40)]]];
-		UIBezierPath *handle = [UIBezierPath bezierPath];
-		[handle moveToPoint:CGPointMake(64, 64)];
-		[handle addLineToPoint:CGPointMake(88, 88)];
-		[p appendPath:stroked(handle, 14)];
-		break;
-	}
-	case YMGlyphNote: {
-		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(12, 66, 30, 22)]];
-		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(56, 58, 30, 22)]];
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(35, 22, 7, 56)]];
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(79, 12, 7, 58)]];
-		CGFloat beam[] = {35, 22, 86, 10, 86, 24, 35, 36};
-		add_poly(p, beam, 4);
-		break;
-	}
-	case YMGlyphHeart:
-		p = stroked(heart_path(), 9);
-		break;
-	case YMGlyphHeartFilled:
-		p = heart_path();
-		break;
-	case YMGlyphPlaylists: {
-		for (int i = 0; i < 3; ++i) {
-			CGFloat y = 18 + i * 26;
-			[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(8, y, 14, 14) cornerRadius:3]];
-			[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(30, y + 1, 62, 12) cornerRadius:3]];
-		}
-		break;
-	}
-	case YMGlyphPlay: {
-		CGFloat t[] = {24, 10, 88, 50, 24, 90};
-		add_poly(p, t, 3);
-		break;
-	}
-	case YMGlyphPause:
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 12, 22, 76) cornerRadius:3]];
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(58, 12, 22, 76) cornerRadius:3]];
-		break;
-	case YMGlyphNext: {
-		CGFloat a[] = {6, 20, 46, 50, 6, 80};
-		CGFloat b[] = {44, 20, 84, 50, 44, 80};
-		add_poly(p, a, 3);
-		add_poly(p, b, 3);
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(84, 20, 9, 60)]];
-		break;
-	}
-	case YMGlyphPrev: {
-		CGFloat a[] = {94, 20, 54, 50, 94, 80};
-		CGFloat b[] = {56, 20, 16, 50, 56, 80};
-		add_poly(p, a, 3);
-		add_poly(p, b, 3);
-		[p appendPath:[UIBezierPath bezierPathWithRect:CGRectMake(7, 20, 9, 60)]];
-		break;
-	}
-	case YMGlyphShuffle: {
-		UIBezierPath *l1 = [UIBezierPath bezierPath];
-		[l1 moveToPoint:CGPointMake(8, 28)];
-		[l1 addCurveToPoint:CGPointMake(72, 72) controlPoint1:CGPointMake(44, 28) controlPoint2:CGPointMake(40, 72)];
-		UIBezierPath *l2 = [UIBezierPath bezierPath];
-		[l2 moveToPoint:CGPointMake(8, 72)];
-		[l2 addCurveToPoint:CGPointMake(72, 28) controlPoint1:CGPointMake(44, 72) controlPoint2:CGPointMake(40, 28)];
-		[p appendPath:stroked(l1, 9)];
-		[p appendPath:stroked(l2, 9)];
-		[p appendPath:arrow_head(CGPointMake(84, 28), 0, 14)];
-		[p appendPath:arrow_head(CGPointMake(84, 72), 0, 14)];
-		break;
-	}
-	case YMGlyphRepeat:
-	case YMGlyphRepeatOne: {
-		UIBezierPath *loop = [UIBezierPath bezierPath];
-		[loop moveToPoint:CGPointMake(60, 26)];
-		[loop addLineToPoint:CGPointMake(30, 26)];
-		[loop addArcWithCenter:CGPointMake(30, 50) radius:24 startAngle:-M_PI_2 endAngle:M_PI_2 clockwise:NO];
-		[loop addLineToPoint:CGPointMake(70, 74)];
-		[loop addArcWithCenter:CGPointMake(70, 50) radius:24 startAngle:M_PI_2 endAngle:-M_PI_2 * 0.3 clockwise:NO];
-		[p appendPath:stroked(loop, 9)];
-		[p appendPath:arrow_head(CGPointMake(66, 26), 0, 14)];
-		if (glyph == YMGlyphRepeatOne)
-			[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(45, 38, 10, 26) cornerRadius:2]];
-		break;
-	}
-	case YMGlyphGear: {
-		for (int i = 0; i < 8; ++i) {
-			UIBezierPath *tooth = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(-8, -46, 16, 22) cornerRadius:3];
-			CGAffineTransform t = CGAffineTransformMakeTranslation(50, 50);
-			t = CGAffineTransformRotate(t, i * M_PI / 4);
-			[tooth applyTransform:t];
-			[p appendPath:tooth];
-		}
-		[p appendPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(18, 18, 64, 64)]];
-		[p appendPath:[YMDraw reversedPath:[UIBezierPath bezierPathWithOvalInRect:CGRectMake(37, 37, 26, 26)]]];
-		break;
-	}
-	case YMGlyphQueue: {
-		CGFloat t[] = {8, 14, 26, 25, 8, 36};
-		add_poly(p, t, 3);
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(34, 19, 58, 12) cornerRadius:3]];
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(8, 46, 84, 12) cornerRadius:3]];
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(8, 72, 84, 12) cornerRadius:3]];
-		break;
-	}
-	case YMGlyphWave: {
-		for (int k = 0; k < 3; ++k) {
-			UIBezierPath *w = [UIBezierPath bezierPath];
-			CGFloat amp = 8 + k * 7, y0 = 50;
-			for (int x = 0; x <= 84; x += 2) {
-				CGFloat y = y0 + sin((x / 84.0) * 2 * M_PI + k * 0.9) * amp;
-				CGPoint pt = CGPointMake(8 + x, y);
-				if (x == 0) [w moveToPoint:pt]; else [w addLineToPoint:pt];
+	const char *name = glyph_icon_name(glyph);
+	if (!name)
+		return p;
+	for (size_t k = 0; k < sizeof(ym_icons) / sizeof(ym_icons[0]); ++k) {
+		if (strcmp(ym_icons[k].name, name))
+			continue;
+		const float *v = ym_icons[k].pts;
+		for (const char *op = ym_icons[k].ops; *op; ++op) {
+			switch (*op) {
+			case 'M': [p moveToPoint:CGPointMake(v[0], v[1])]; v += 2; break;
+			case 'L': [p addLineToPoint:CGPointMake(v[0], v[1])]; v += 2; break;
+			case 'Q': [p addQuadCurveToPoint:CGPointMake(v[2], v[3]) controlPoint:CGPointMake(v[0], v[1])]; v += 4; break;
+			case 'Z': [p closePath]; break;
 			}
-			[p appendPath:stroked(w, k == 0 ? 8 : 4)];
 		}
 		break;
-	}
-	case YMGlyphCopy: {
-		[p appendPath:stroked([UIBezierPath bezierPathWithRoundedRect:CGRectMake(14, 10, 50, 60) cornerRadius:8], 8)];
-		[p appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectMake(36, 30, 50, 60) cornerRadius:8]];
-		break;
-	}
-	case YMGlyphRefresh: {
-		UIBezierPath *arc = [UIBezierPath bezierPathWithArcCenter:CGPointMake(50, 52) radius:32
-				startAngle:-M_PI_2 + 0.5 endAngle:-M_PI_2 - 0.2 + 2 * M_PI clockwise:YES];
-		[p appendPath:stroked(arc, 10)];
-		[p appendPath:arrow_head(CGPointMake(46, 20), M_PI, 14)];
-		break;
-	}
 	}
 	return p;
 }

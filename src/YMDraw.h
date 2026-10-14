@@ -28,6 +28,8 @@ typedef enum {
 	YMGlyphWave,
 	YMGlyphCopy,
 	YMGlyphRefresh,
+	YMGlyphChevronDown,
+	YMGlyphMore,
 } YMGlyph;
 
 @interface YMDraw : NSObject

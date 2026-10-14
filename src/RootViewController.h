@@ -9,7 +9,11 @@
 #include <UIKit/UIKit.h>
 #include "UIKit/UIKit.h"
 @interface RootViewController : UITabBarController
-
+/* Now Playing slides up over everything from the mini player and can be
+ * dragged back down, like Apple Music. */
+- (void)openPlayer:(BOOL)animated;
+- (void)closePlayer:(BOOL)animated;
+@property (readonly) BOOL playerOpen;
 @end
 
 

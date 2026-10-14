@@ -122,9 +122,36 @@
 }
 
 -(void)playButtonPushed:(id)sender{
-	PlayerViewController *vc = [[PlayerViewController alloc]init];
-	UINavigationController *nc = [[UINavigationController alloc]initWithRootViewController:vc];
-	[self.window.rootViewController presentViewController:nc animated:TRUE completion:nil];
+	[self openPlayer];
+}
+
+-(void)openPlayer{
+	RootViewController *root = (RootViewController *)self.window.rootViewController;
+	if ([root isKindOfClass:[RootViewController class]])
+		[root openPlayer:YES];
+}
+
+-(void)playTrackAt:(NSInteger)index in:(NSArray *)items asList:(BOOL)asList onDone:(void (^)(void))onDone{
+	if (index < 0 || index >= (NSInteger)items.count) {
+		if (onDone) onDone();
+		return;
+	}
+	Item *tapped = [items objectAtIndex:index];
+	NSMutableArray *queue = [NSMutableArray array];
+	if (asList) {
+		for (Item *item in items)
+			if (item.itemType == ITEM_TRACK || item.itemType == ITEM_PODCAST_EPOSODE)
+				[queue addObject:item];
+	} else {
+		[queue addObject:tapped];
+	}
+	NSUInteger start = [queue indexOfObject:tapped];
+	if (start == NSNotFound) {
+		if (onDone) onDone();
+		return;
+	}
+	[self.player playItems:queue startingAt:start onDone:onDone];
+	[self openPlayer];
 }
 
 -(void)showMessage:(NSString *)msg {
