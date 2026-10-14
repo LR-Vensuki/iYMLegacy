@@ -8,6 +8,9 @@
 #import <UIKit/UIKit.h>
 #import "YMDraw.h"
 
+/* iPad gets the same interface, laid out for the bigger screen */
+#define YMIsPad() (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
+
 typedef enum {
 	YMThemeClassic = 0,
 	YMThemeYandex,

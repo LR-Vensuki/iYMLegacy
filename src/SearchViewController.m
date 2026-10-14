@@ -312,7 +312,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
 	}];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 #pragma mark <SEARCHBAR FUNCTIONS>
@@ -369,7 +369,7 @@ int search_tracks(void *data, playlist_t *playlist, album_t *album, track_t *tra
 	if (item.itemType != ITEM_TRACK && item.itemType != ITEM_PODCAST_EPOSODE)
 		return;
 	ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 @end

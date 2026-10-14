@@ -302,11 +302,11 @@ static void clear_saved_tokens(void)
 }
 
 - (NSUInteger)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskPortrait;
+    return YMIsPad() ? UIInterfaceOrientationMaskAll : UIInterfaceOrientationMaskPortrait;
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o {
-    return o == UIInterfaceOrientationPortrait;
+    return YMIsPad() || o == UIInterfaceOrientationPortrait;
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {

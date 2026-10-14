@@ -238,12 +238,15 @@ static YMTheme *current_theme = nil;
 
 - (UIImage *)tabBackground
 {
-	return [YMDraw imageWithSize:CGSizeMake(64, 49) opaque:YES drawing:^(CGContextRef ctx, CGRect rect) {
+	/* the iPad tab bar is 56pt tall; a shorter image would be tiled */
+	CGFloat h = YMIsPad() ? 56 : 49;
+	return [YMDraw imageWithSize:CGSizeMake(64, h) opaque:YES drawing:^(CGContextRef ctx, CGRect rect) {
 		if (self.kind == YMThemeClassic) {
 			/* iOS 6 glossy black */
-			[YMDraw fillRect:CGRectMake(0, 0, 64, 24) inContext:ctx
+			CGFloat half = floor(h / 2);
+			[YMDraw fillRect:CGRectMake(0, 0, 64, half) inContext:ctx
 			          colors:@[YMRGB(78, 78, 78), YMRGB(40, 40, 40)] locations:NULL];
-			[YMDraw fillRect:CGRectMake(0, 24, 64, 25) inContext:ctx
+			[YMDraw fillRect:CGRectMake(0, half, 64, h - half) inContext:ctx
 			          colors:@[YMRGB(18, 18, 18), YMRGB(0, 0, 0)] locations:NULL];
 		} else {
 			[YMDraw fillRect:rect inContext:ctx colors:@[self.tabTop, self.tabBottom] locations:NULL];

@@ -116,7 +116,7 @@
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
 	}];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 
@@ -136,7 +136,7 @@
 	if (item.itemType != ITEM_TRACK && item.itemType != ITEM_PODCAST_EPOSODE)
 		return;
 	ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 @end

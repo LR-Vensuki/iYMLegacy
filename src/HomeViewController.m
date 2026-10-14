@@ -66,13 +66,17 @@ enum { kSectionWave, kSectionTracks, kSectionPlaylists, kSectionCount };
 
 	self.coverFlow = [[YMCoverFlowView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, [self coverFlowHeight])];
 	self.coverFlow.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	self.coverFlow.coverSize = [self coverSize];
 	__weak HomeViewController *weakSelf = self;
 	self.coverFlow.onTap = ^(Item *item, NSInteger index) {
 		[weakSelf.appDelegate playTrackAt:index in:weakSelf.tracks asList:YES from:@"Треки для вас" onDone:NULL];
 	};
 	self.coverFlow.onLongPress = ^(Item *item, NSInteger index) {
 		ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];
-		[as showFromTabBar:weakSelf.tabBarController.tabBar];
+		YMCoverFlowView *flow = weakSelf.coverFlow;
+		CGFloat s = flow.coverSize;
+		[as showFromRect:CGRectMake((flow.bounds.size.width - s) / 2, 10, s, s) inView:flow
+		          tabBar:weakSelf.tabBarController.tabBar];
 	};
 
 	self.shelf = [[YMShelfView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 156)];
@@ -119,9 +123,15 @@ enum { kSectionWave, kSectionTracks, kSectionPlaylists, kSectionCount };
 	}
 }
 
+- (CGFloat)coverSize
+{
+	return YMIsPad() ? 220 : 130;
+}
+
 - (CGFloat)coverFlowHeight
 {
-	return 10 + 130 + 130 * 0.32 * 0.45 + 44;
+	CGFloat s = [self coverSize];
+	return 10 + s + s * 0.32 * 0.45 + 44;
 }
 
 - (void)showThemes:(id)sender
@@ -369,6 +379,11 @@ static int get_feed(void *data, playlist_t *playlist, track_t *track, const char
 	if (!cell) {
 		cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:ident];
 		cell.selectionStyle = UITableViewCellSelectionStyleNone;
+		/* a new cell is 320pt wide: give it the table's width before the
+		 * flexible-width content goes in, or on the iPad that content would
+		 * grow by the difference once the table lays the cell out */
+		cell.frame = CGRectMake(0, 0, tableView.bounds.size.width, cell.frame.size.height);
+		cell.contentView.frame = cell.bounds;
 		UIView *content = nil;
 		if (indexPath.section == kSectionWave)
 			content = self.hero;

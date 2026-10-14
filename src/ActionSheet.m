@@ -11,6 +11,7 @@
 #include "Foundation/Foundation.h"
 #include "UIKit/UIKit.h"
 #import "AppDelegate.h"
+#import "YMTheme.h"
 
 @implementation ActionSheet
 - (id)initWithItem:(Item *)item isDir:(BOOL)isDir onDone:(void (^)())onDone
@@ -70,6 +71,20 @@ static int get_tracks(void *data, track_t *track, const char *error)
 						(__bridge void *)self, get_tracks);
 			}];
 		}
+}
+
+- (void)showFromRect:(CGRect)rect inView:(UIView *)view tabBar:(UITabBar *)tabBar
+{
+	if (YMIsPad() && view)
+		[self showFromRect:rect inView:view animated:YES];
+	else
+		[self showFromTabBar:tabBar];
+}
+
+- (void)showForRow:(NSIndexPath *)indexPath inTable:(UITableView *)table tabBar:(UITabBar *)tabBar
+{
+	CGRect rect = (table && indexPath) ? [table rectForRowAtIndexPath:indexPath] : CGRectZero;
+	[self showFromRect:rect inView:(indexPath ? table : nil) tabBar:tabBar];
 }
 
 #pragma mark <ACTION SHEET DELEGATE>

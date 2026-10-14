@@ -250,7 +250,7 @@ static int get_favorites(void *data, track_t *track, const char *error)
 	if (item.itemType != ITEM_TRACK && item.itemType != ITEM_PODCAST_EPOSODE)
 		return;
 	ActionSheet *as = [[ActionSheet alloc] initWithItem:item isDir:NO onDone:nil];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 @end

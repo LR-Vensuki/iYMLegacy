@@ -198,7 +198,7 @@ static int get_user_playlists(void *data, playlist_t *playlist, const char *erro
 	ActionSheet *as = [[ActionSheet alloc]initWithItem:self.selected isDir:YES onDone:^{
 		[spinner stopAnimating];
 	}];
-	[as showFromTabBar:self.tabBarController.tabBar];
+	[as showForRow:indexPath inTable:self.tableView tabBar:self.tabBarController.tabBar];
 }
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {

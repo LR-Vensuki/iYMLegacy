@@ -198,13 +198,16 @@
 - (void)viewWillLayoutSubviews {
 	[super viewWillLayoutSubviews];
 	CGSize b = self.view.bounds.size;
-	BOOL landscape = b.width > b.height;
+	/* the iPad has room to stack everything in either orientation */
+	BOOL landscape = !YMIsPad() && b.width > b.height;
 	CGFloat panelH = 128;
 	CGFloat infoH = 58;
 
 	CGRect art, info, panel;
 	if (!landscape) {
 		CGFloat side = MIN(b.width - 40, b.height - panelH - infoH - 18);
+		if (YMIsPad())
+			side = MIN(side, 460);
 		side = MAX(side, 80);
 		CGFloat top = MAX(10, floor((b.height - panelH - infoH - side) / 2) - 2);
 		art = CGRectMake(floor((b.width - side) / 2), top, side, side);
@@ -235,9 +238,12 @@
 		self.panel.image = [[YMTheme current] panelImageWithSize:panel.size];
 	self.panel.frame = panel;
 	CGFloat w = panel.size.width;
-	self.elapsedLabel.frame = CGRectMake(4, 14, 44, 16);
-	self.remainingLabel.frame = CGRectMake(w - 48, 14, 44, 16);
-	self.scrubber.frame = CGRectMake(50, 10, w - 100, 24);
+	/* on the iPad the scrubber and volume keep a comfortable length in the middle */
+	CGFloat cw = YMIsPad() ? MIN(w, 600) : w;
+	CGFloat cx = floor((w - cw) / 2);
+	self.elapsedLabel.frame = CGRectMake(cx + 4, 14, 44, 16);
+	self.remainingLabel.frame = CGRectMake(cx + cw - 48, 14, 44, 16);
+	self.scrubber.frame = CGRectMake(cx + 50, 10, cw - 100, 24);
 
 	CGFloat row = 66;
 	self.playButton.center = CGPointMake(w / 2, row);
@@ -245,7 +251,7 @@
 	self.nextButton.center = CGPointMake(w / 2 + 70, row);
 	self.shuffleButton.center = CGPointMake(MAX(26, w / 2 - 130), row);
 	self.repeatButton.center = CGPointMake(MIN(w - 26, w / 2 + 130), row);
-	self.volume.frame = CGRectMake(24, panel.size.height - 30, w - 48, 24);
+	self.volume.frame = CGRectMake(cx + 24, panel.size.height - 30, cw - 48, 24);
 }
 
 #pragma mark - state

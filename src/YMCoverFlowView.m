@@ -32,9 +32,7 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 
 		self.stage = [[UIView alloc] initWithFrame:self.bounds];
 		self.stage.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-		CATransform3D perspective = CATransform3DIdentity;
-		perspective.m34 = -1.0 / 520.0;
-		self.stage.layer.sublayerTransform = perspective;
+		[self updatePerspective];
 		[self addSubview:self.stage];
 
 		self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -89,6 +87,15 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 	[self reloadImages];
 }
 
+/* The camera distance follows the cover size, so a big Cover Flow (Now
+ * Playing, the iPad) keeps the proportions of the small one. */
+- (void)updatePerspective
+{
+	CATransform3D perspective = CATransform3DIdentity;
+	perspective.m34 = -1.0 / (self.coverSize * 4);
+	self.stage.layer.sublayerTransform = perspective;
+}
+
 - (void)setHidesCaption:(BOOL)hides
 {
 	_hidesCaption = hides;
@@ -103,6 +110,7 @@ static const CGFloat kSideAngle = 1.2;   /* ~70 degrees */
 	/* spacing follows the cover size: keep the same cover in the middle */
 	NSInteger keep = self.selectedIndex;
 	_coverSize = size;
+	[self updatePerspective];
 	[self reloadTheme];
 	[self setNeedsLayout];
 	[self layoutIfNeeded];
